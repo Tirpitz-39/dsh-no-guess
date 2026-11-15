@@ -1,4 +1,4 @@
-# dsh-no-guess · Ask First
+# dsh-no-guess · Don't Guess
 
 > Don't guess. When the request is unclear, ask before acting.
 

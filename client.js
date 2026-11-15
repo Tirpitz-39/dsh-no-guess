@@ -1,8 +1,8 @@
 /* global window, fetch */
 /**
- * 先问 / dsh-no-guess — 浏览器半侧。
+ * 不猜 / dsh-no-guess — 浏览器半侧。
  *
- * 1) conversation.input.left：输入框旁的「先问」开关（全局）
+ * 1) conversation.input.left：输入框旁的「不猜」开关（全局）
  * 2) settings.section：完整设置（开关 / 超时 / 每轮最多拦几次）
  *
  * Host 半负责拦截；这里只负责把开关摆出来。
@@ -229,7 +229,7 @@ window.__ModuleLoader__.load({
         'button',
         {
           type: 'button',
-          title: '先问：话说不清楚时不瞎猜，先问你',
+          title: '不猜：话说不清楚时不瞎猜，先问你',
           onClick: toggle,
           style: {
             display: 'inline-flex',
@@ -256,7 +256,7 @@ window.__ModuleLoader__.load({
             background: enabled ? tokens.accent : tokens.borderStrong,
           },
         }),
-        h('span', null, '先问'),
+        h('span', null, '不猜'),
         h('span', { style: { color: tokens.caption, fontSize: 11 } }, enabled ? '开' : '关'),
       )
     }
@@ -278,7 +278,7 @@ window.__ModuleLoader__.load({
       return h(
         'div',
         { style: styles.page },
-        h('h2', { style: styles.title }, '先问'),
+        h('h2', { style: styles.title }, '不猜'),
         h(
           'p',
           { style: styles.intro },
@@ -289,7 +289,7 @@ window.__ModuleLoader__.load({
           'div',
           { style: styles.card },
           h(Row, {
-            label: '启用「先问」',
+            label: '启用「不猜」',
             hint: '关闭后完全不拦，和原生行为一致。',
             children: h(Toggle, { checked: enabled, onChange: (next) => save({ enabled: next }) }),
           }),
@@ -360,7 +360,7 @@ window.__ModuleLoader__.load({
         )
         ctx.slots.inject('settings.section', () =>
           ctx.slots.register(
-            { name: 'settings.section', id: 'dsh-no-guess', order: 62, label: () => '先问', inject: () => ({}) },
+            { name: 'settings.section', id: 'dsh-no-guess', order: 62, label: () => '不猜', inject: () => ({}) },
             SettingsPage,
           ),
         )

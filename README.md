@@ -1,4 +1,4 @@
-# dsh-no-guess · 先问
+# dsh-no-guess · 不猜
 
 > 不明白就先问。用户那句话说不清楚时，模型不许猜着做。
 
@@ -32,7 +32,7 @@
 
 ## 配置项
 
-设置页（设置 → 先问）或 HTTP 接口 `POST /dsh-no-guess/config` 都可改；手改 `config.json` 也行，坏值会被夹回合法区间。
+设置页（设置 → 不猜）或 HTTP 接口 `POST /dsh-no-guess/config` 都可改；手改 `config.json` 也行，坏值会被夹回合法区间。
 
 | 配置项 | 默认 | 说明 |
 |---|---|---|
@@ -91,7 +91,7 @@ dsh plugin add file:./dsh-no-guess
 
 本地开发时也可以直接指向自己的目录（`dsh plugin add file:<插件目录>`）。
 
-装完**重启 DSH**。设置 → 先问，或输入框旁的「先问」按钮。
+装完**重启 DSH**。设置 → 不猜，或输入框旁的「不猜」按钮。
 
 ## 测试
 

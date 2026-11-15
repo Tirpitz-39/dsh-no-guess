@@ -47,7 +47,7 @@ const text = extractUserText([
 check('extractUserText skips runtime-context', text === '各个模式有什么区别', text)
 
 const historyText = extractUserText([
-  { role: 'user', content: [{ type: 'text', text: '帮我修一下 E:\\DSH\\profiles\\\\desktop 里的配置，顺便看看日志' }] },
+  { role: 'user', content: [{ type: 'text', text: '帮我修一下 ~/projects/demo 里的配置，顺便看看日志' }] },
   { role: 'assistant', content: [{ type: 'text', text: '好的，已处理' }] },
   { role: 'user', content: [{ type: 'text', text: '各个模式有什么区别' }] },
 ])
