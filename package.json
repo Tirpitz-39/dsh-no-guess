@@ -45,7 +45,7 @@
     "test:smoke": "node test/smoke.mjs",
     "test:edge": "node test/edge-cases.mjs",
     "test:attack": "node test/attack.mjs",
-    "prepublishOnly": "npm test"
+    "prepublishOnly": "node test/smoke.mjs && node test/edge-cases.mjs && node test/attack.mjs && node test/config.mjs"
   },
   "repository": {
     "type": "git",
