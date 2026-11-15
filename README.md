@@ -6,6 +6,7 @@
 
 [![test](https://github.com/Tirpitz-39/dsh-no-guess/actions/workflows/test.yml/badge.svg)](https://github.com/Tirpitz-39/dsh-no-guess/actions/workflows/test.yml)
 [![npm](https://img.shields.io/npm/v/dsh-no-guess?style=flat-square)](https://www.npmjs.com/package/dsh-no-guess)
+[![npm downloads](https://img.shields.io/npm/dm/dsh-no-guess?style=flat-square&logo=npm)](https://www.npmjs.com/package/dsh-no-guess)
 [![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-plugin-4B67B4?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
 [![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-amber?style=flat-square)](https://github.com/topics/dsh-plugin)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
