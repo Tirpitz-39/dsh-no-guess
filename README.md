@@ -5,6 +5,14 @@
 [English](README.en.md) | **中文**
 
 [![test](https://github.com/Tirpitz-39/dsh-no-guess/actions/workflows/test.yml/badge.svg)](https://github.com/Tirpitz-39/dsh-no-guess/actions/workflows/test.yml) [![awesome · DSH plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
+[![npm](https://img.shields.io/npm/v/dsh-no-guess?style=flat-square)](https://www.npmjs.com/package/dsh-no-guess)
+[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-plugin-4B67B4?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
+[![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-amber?style=flat-square)](https://github.com/topics/dsh-plugin)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D18-339933.svg?style=flat-square)](package.json)
+[![downloads](https://img.shields.io/npm/dm/dsh-no-guess?style=flat-square)](https://www.npmjs.com/package/dsh-no-guess)
+![platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-2ea44f?style=flat-square)
+[![ask-first](https://img.shields.io/badge/ask--first-no--guess-orange?style=flat-square)](#)
 
 ## 它做什么
 
