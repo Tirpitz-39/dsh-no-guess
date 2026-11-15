@@ -254,6 +254,41 @@ const currentGuess = await runTool('pwsh', agent)
 check('cross-turn: turn N guess still arms turn N', currentGuess && currentGuess.kind === 'deny', JSON.stringify(currentGuess))
 agent.session.eventsSnapshot = []
 
+// "不确定用户" alone is too broad (it fires while the model is unsure what a
+// config value is); only the intent-word suffixes count.
+writeConfig({ enabled: true, ruleGate: false })
+await runPreStep(agent, '那个怎么样', 130)
+agent.session.eventsSnapshot = [
+  {
+    type: 'assistant/message',
+    data: { turn: 130, message: { content: [{ type: 'reasoning', text: '不确定用户配置里 timeout 是多少，先读一下' }] } },
+  },
+]
+const noIntent = await runTool('pwsh', agent)
+check('intent suffix: "不确定用户配置" does not arm', noIntent && noIntent.kind === 'enter', JSON.stringify(noIntent))
+agent.session.eventsSnapshot = [
+  {
+    type: 'assistant/message',
+    data: { turn: 130, message: { content: [{ type: 'reasoning', text: '不确定用户想要什么，先问一下' }] } },
+  },
+]
+const withIntent = await runTool('pwsh', agent)
+check('intent suffix: "不确定用户想要" arms', withIntent && withIntent.kind === 'deny', JSON.stringify(withIntent))
+agent.session.eventsSnapshot = []
+
+// A human message that names the plugin marks a turn about the plugin itself.
+writeConfig({ enabled: true, ruleGate: false })
+await runPreStep(agent, '帮我看下 dsh-no-guess 这个插件', 131)
+agent.session.eventsSnapshot = [
+  {
+    type: 'assistant/message',
+    data: { turn: 131, message: { content: [{ type: 'reasoning', text: '我猜用户是想问这个插件的拦截逻辑' }] } },
+  },
+]
+const selfTalk = await runTool('pwsh', agent)
+check('self-discussion: plugin name in the user message exempts the turn', selfTalk && selfTalk.kind === 'enter', JSON.stringify(selfTalk))
+agent.session.eventsSnapshot = []
+
 // privacy: the log must not carry user text unless logUserText is on
 const LOG_FILE = join(process.env.DSH_HOME, 'ask-first', 'ask-first.log')
 writeConfig({ enabled: true, ruleGate: false, logUserText: false })

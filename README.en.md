@@ -78,6 +78,10 @@ Matching is case-insensitive and whitespace-insensitive (a phrase split across l
 
 **Current turn only**: the gate looks at assistant messages of the current `turn` and stops at the latest `user/message` — a guess from a turn already answered no longer arms the next one.
 
+**Intent suffix**: `不确定用户` / `不清楚用户` only count when followed by an intent word (想 / 要 / 需要 / 偏好 / 指 / 是) — "不确定用户配置" is not a guess.
+
+**Self-discussion exemption**: turns whose user message names this plugin (`dsh-no-guess` / `ask-first` / 不猜插件 / 插件本身) skip the thinking gate — discussing the plugin itself quotes these phrases and would self-trigger. Only the user message counts; a mention inside the reasoning does not.
+
 > Measured (2026-11-16, later): on this machine `deepseek-flash` assistant messages **do carry full reasoning** (421/421), so the gate scans it directly. The earlier "empty reasoning block" observation no longer applies.
 
 ## Data
@@ -107,7 +111,7 @@ Restart DSH afterwards. Settings → Ask First, or the "Ask First" button next t
 
 ```bash
 npm test                 # all five suites
-node test/smoke.mjs      # 44 checks: rules / blocking / passthrough / receipts / subagents / machine turns / cross-turn / thinking chain / privacy
+node test/smoke.mjs      # 47 checks: rules / blocking / passthrough / receipts / subagents / machine turns / cross-turn / thinking chain / intent suffix / self-discussion / privacy
 node test/edge-cases.mjs # 20 edge samples
 node test/attack.mjs     # 15 adversarial samples (forged prefixes, split phrases, hard resistance, subagent bypass…)
 node test/config.mjs     # 25 checks: defaults/clamping, atomic writes, log rotation, cross-platform data dir, rapid write/read

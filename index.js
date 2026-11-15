@@ -262,7 +262,14 @@ export function isAck(text) {
 // Matching happens AFTER whitespace is stripped, so English patterns are
 // written without spaces ("I guess the user" -> "iguesstheuser").
 export const GUESS_RE =
-  /(我猜用户|猜用户想|不确定用户|不清楚用户|不知道用户要|用户可能是想|用户大概是想要|用户要的应该是|iguesstheuser|imguessingtheuser|guessingwhattheuser|iguessthat|iguessthis|iguessthey|iguessit|iguessits|notsurewhattheuser|unsurewhattheuser|notsurewhatyoumean|unsurewhatyoumean|dontknowwhattheuser|dontknowwhatyouwant|dontknowwhatyoumean|canttellwhattheuser|canttellwhatyoumean|theuserprobablywants|userprobablywants|theuserlikelywants|userlikelywants|theusermightwant|maybetheuserwants|perhapstheuser|assumingtheuser|ithinktheuser|ibelievetheuser|ithinkyouwant|ithinkyoumean)/i
+  /(我猜用户|猜用户想|不确定用户(?:想|要|需要|偏好|指|是|的意图)|不清楚用户(?:想|要|需要|偏好|指|是)|不知道用户要|用户可能是想|用户大概是想要|用户要的应该是|iguesstheuser|imguessingtheuser|guessingwhattheuser|iguessthat|iguessthis|iguessthey|iguessit|iguessits|notsurewhattheuser|unsurewhattheuser|notsurewhatyoumean|unsurewhatyoumean|dontknowwhattheuser|dontknowwhatyouwant|dontknowwhatyoumean|canttellwhattheuser|canttellwhatyoumean|theuserprobablywants|userprobablywants|theuserlikelywants|userlikelywants|theusermightwant|maybetheuserwants|perhapstheuser|assumingtheuser|ithinktheuser|ibelievetheuser|ithinkyouwant|ithinkyoumean)/i
+
+// The plugin's own name in the user's message marks a turn that is about this
+// plugin: its README and this very code quote the guess phrases, so scanning
+// the reasoning there self-triggers. Scoped to the user's message — the
+// reasoning is model output and must not be able to name the plugin to talk
+// its way out.
+const SELF_DISCUSS_RE = /(dsh-no-guess|ask-first|不猜插件|不猜这个插件|插件本身)/i
 
 /**
  * Reasoning text of THIS turn only. The snapshot keeps earlier turns too; a
@@ -775,7 +782,10 @@ export function apply(ctx) {
       // Primary gate: the model's own reasoning admits it is guessing intent.
       // Only for turns that actually came from a human message — machine turns
       // (schedule reminders / plugin followups) have no lastText and must not arm.
-      if (!st.armed && cfg.thinkingGate !== false && st.blocksThisTurn === 0 && st.lastText) {
+      // Turns whose human message names this plugin are about the plugin
+      // itself (README/code quotes the guess phrases) and would self-trigger.
+      const selfDiscuss = SELF_DISCUSS_RE.test(st.lastText)
+      if (!st.armed && !selfDiscuss && cfg.thinkingGate !== false && st.blocksThisTurn === 0 && st.lastText) {
         const guess = extractGuessText(session, st.lastTurn)
         // Strip whitespace before matching so a newline cannot split the phrase
         // (adversarial check A5).
