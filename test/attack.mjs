@@ -162,12 +162,12 @@ const record = (id, desc, result, note) => rows.push({ id, desc, result, note })
   record('A11', '英文推理 I guess the user wants', judge(await tool('pwsh', a)), '防住：指向用户的英文猜测会武装')
 }
 
-// A12 英文通用猜测句式
+// A12 英文通用猜测句式（单独验证 not sure what you mean，不靠 I guess that）
 {
   const a = newAgent({ origin: 'web' })
   await feed(a, 'sort out that project')
-  a.session.eventsSnapshot = guess('Not sure what you mean, I guess that is the report')
-  record('A12', '英文推理 Not sure what you mean / I guess that', judge(await tool('pwsh', a)), '防住：通用 guess 句式会武装')
+  a.session.eventsSnapshot = guess('Not sure what you mean, I will try the report first')
+  record('A12', '英文推理 Not sure what you mean', judge(await tool('pwsh', a)), '防住：通用 guess 句式会武装')
 }
 
 // A13 英文正常推理不该被误伤
