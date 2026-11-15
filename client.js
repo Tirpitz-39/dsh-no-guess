@@ -338,6 +338,11 @@ window.__ModuleLoader__.load({
             hint: '默认关。开了以后：规则没判出「说不清」时，再调一次模型判断需求是否缺信息或自相矛盾。注意：判断器只看单条消息、没有对话上下文，会偏严（实测把「测一下吧」判成缺信息）；每次判断花少量 token。思考链已经够准，这个当备用。',
             children: h(Toggle, { checked: cfg.modelGate === true, onChange: (next) => save({ modelGate: next }) }),
           }),
+          h(Row, {
+            label: '日志记录对话内容（默认关）',
+            hint: '默认 ask-first.log 只记 sid / turn / 工具名，不写你说的话，也不写模型思考片段。开了方便排查误拦，但日志里会含对话内容。',
+            children: h(Toggle, { checked: cfg.logUserText === true, onChange: (next) => save({ logUserText: next }) }),
+          }),
         ),
         h(
           'p',

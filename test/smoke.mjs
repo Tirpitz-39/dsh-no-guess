@@ -2,7 +2,7 @@
 // temp DSH_HOME, no web server.
 //
 //   node test/smoke.mjs
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -228,6 +228,80 @@ const machineTurn = await runTool('pwsh', agent)
 check('machine turn: no human message -> no arm', machineTurn && machineTurn.kind === 'enter', JSON.stringify(machineTurn))
 agent.session.eventsSnapshot = []
 writeConfig({ enabled: true, ruleGate: true })
+
+// cross-turn contamination: a guess from an earlier turn must not arm this one
+writeConfig({ enabled: true, ruleGate: false })
+await runPreStep(agent, '帮我改一下 config.json', 120)
+agent.session.eventsSnapshot = [
+  {
+    type: 'assistant/message',
+    data: { turn: 119, message: { content: [{ type: 'reasoning', text: '我猜用户是想问模式的区别' }] } },
+  },
+  {
+    type: 'assistant/message',
+    data: { turn: 120, message: { content: [{ type: 'reasoning', text: '先读配置文件，然后改 timeout' }] } },
+  },
+]
+const staleGuess = await runTool('pwsh', agent)
+check('cross-turn: turn N-1 guess does not arm turn N', staleGuess && staleGuess.kind === 'enter', JSON.stringify(staleGuess))
+agent.session.eventsSnapshot = [
+  {
+    type: 'assistant/message',
+    data: { turn: 120, message: { content: [{ type: 'reasoning', text: '我猜用户是想改 timeout' }] } },
+  },
+]
+const currentGuess = await runTool('pwsh', agent)
+check('cross-turn: turn N guess still arms turn N', currentGuess && currentGuess.kind === 'deny', JSON.stringify(currentGuess))
+agent.session.eventsSnapshot = []
+
+// privacy: the log must not carry user text unless logUserText is on
+const LOG_FILE = join(process.env.DSH_HOME, 'ask-first', 'ask-first.log')
+writeConfig({ enabled: true, ruleGate: false, logUserText: false })
+await runPreStep(agent, '那个怎么样', 121)
+agent.session.eventsSnapshot = [
+  {
+    type: 'assistant/message',
+    data: { turn: 121, message: { content: [{ type: 'reasoning', text: '我猜用户是想问模式的区别' }] } },
+  },
+]
+await runTool('pwsh', agent)
+const logDefault = readFileSync(LOG_FILE, 'utf8')
+check(
+  'privacy: log omits user text by default',
+  !logDefault.includes('那个怎么样') && !logDefault.includes('我猜用户'),
+  'log leaked user text',
+)
+agent.session.eventsSnapshot = []
+
+writeConfig({ enabled: true, ruleGate: false, logUserText: true })
+await runPreStep(agent, '那个怎么样', 122)
+agent.session.eventsSnapshot = [
+  {
+    type: 'assistant/message',
+    data: { turn: 122, message: { content: [{ type: 'reasoning', text: '我猜用户是想问模式的区别' }] } },
+  },
+]
+await runTool('pwsh', agent)
+const logOptIn = readFileSync(LOG_FILE, 'utf8')
+check('privacy: logUserText=true records the text', logOptIn.includes('那个怎么样'), 'text not logged')
+agent.session.eventsSnapshot = []
+writeConfig({ logUserText: false })
+
+// replay: the regression script groups by turn and only counts human turns
+{
+  const { replaySession } = await import('./replay.mjs')
+  const replayText = [
+    '{"type":"turn/start","data":{"turn":1}}',
+    '{"type":"user/message","data":{"source":{"kind":"user"},"content":[]}}',
+    '{"type":"assistant/message","data":{"turn":1,"message":{"content":[{"type":"reasoning","text":"I guess the user wants X"}]}}}',
+    '{"type":"turn/start","data":{"turn":2}}',
+    '{"type":"user/message","data":{"source":{"kind":"agent-instructions"},"content":[]}}',
+    '{"type":"assistant/message","data":{"turn":2,"message":{"content":[{"type":"reasoning","text":"我猜用户是想问"}]}}}',
+  ].join('\n')
+  const replay = replaySession(replayText)
+  check('replay: only human turns are counted', replay.humanTurns === 1, JSON.stringify(replay))
+  check('replay: an armed turn reports armed', replay.turns.length === 1 && replay.turns[0].armed === true, JSON.stringify(replay.turns))
+}
 
 console.log('SELFTEST PASS=' + pass + ' FAIL=' + fail)
 if (fail > 0) process.exit(1)

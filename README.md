@@ -50,6 +50,7 @@
 | `timeoutMinutes` | `10` | 被拦后多久没回复就按最小假设继续，1–120 |
 | `maxBlocksPerTurn` | `2` | 每轮最多拦几次，1–10 |
 | `vagueMaxLength` | `40` | 多短算「说不清」，10–200 |
+| `logUserText` | `false` | 日志是否记录用户消息与思考片段；默认只记 sid / turn / 工具名 |
 
 ## 超时
 
@@ -75,7 +76,9 @@
 
 匹配大小写不敏感、匹配前去掉空白（思考里换行拆词也能抓到）。英文对话靠这些信号触发；正常推理（没写猜测词）不拦。
 
-> 实测（2026-11-16）：`deepseek-flash` 的 assistant 消息里 `reasoning` 块是空的（只有空 reasoning + tool-call），所以这个信号对 flash 主要靠正文；换成带思考内容的模型时，思考也会被扫。
+**只扫本轮**：思考链只取当前 `turn` 的 assistant 消息（并止于最近的 `user/message`）——上一轮已经回答过的「我猜用户」不会武装下一轮。
+
+> 实测（2026-11-16，晚）：这台机器上 `deepseek-flash` 的 assistant 消息 **reasoning 块有完整内容**（421/421 条），所以思考链能直接扫到。早前「flash 思考块为空」的观察已不适用。
 
 ## 数据
 
@@ -85,7 +88,7 @@
 |---|---|
 | `config.json` | 上面的配置项；写入是原子的（临时文件 + rename） |
 | `sessions.json` | 每会话的临时覆盖（预留） |
-| `ask-first.log` | 每次拦截/提问/超时的 JSONL 记录，超过 2 MiB 自动轮转保留尾部一半（可用 `DSH_ASK_FIRST_LOG_MAX_BYTES` 调整上限） |
+| `ask-first.log` | 每次拦截/提问/超时的 JSONL 记录，超过 2 MiB 自动轮转保留尾部一半（可用 `DSH_ASK_FIRST_LOG_MAX_BYTES` 调整上限）；默认不写对话内容，`logUserText: true` 才记片段 |
 
 ## 安装
 
@@ -103,16 +106,19 @@ dsh plugin add file:./dsh-no-guess
 ## 测试
 
 ```bash
-npm test                 # 四组一起跑
-node test/smoke.mjs      # 38 项：规则判定 / 拦截 / 放行 / 回执 / 子代理 / 机器轮次 / 思考链
+npm test                 # 五组一起跑
+node test/smoke.mjs      # 44 项：规则判定 / 拦截 / 放行 / 回执 / 子代理 / 机器轮次 / 跨轮 / 思考链 / 隐私
 node test/edge-cases.mjs # 20 条边界样本矩阵
-node test/attack.mjs     # 10 条对抗样本（伪造前缀、拆词、硬抗次数、借道子代理…）
-node test/config.mjs     # 19 项：配置默认值/夹紧、原子写、日志轮转、跨平台数据目录
+node test/attack.mjs     # 15 条对抗样本（伪造前缀、拆词、硬抗次数、借道子代理…）
+node test/config.mjs     # 23 项：配置默认值/夹紧、原子写、日志轮转、跨平台数据目录、缓存
+node test/replay.mjs     # 真实会话回放：统计思考链武装率（fixture 25%，红线 50%）
 ```
 
 测试不需要 DSH 运行时：假 `ctx` / 假 `agent`，`DSH_HOME` 指向临时目录。CI 在 ubuntu 和 windows 上跑 Node 18/20/22。
 
-对抗测试目前 **漏洞 0 / 10**：伪造 `[SCHEDULE REMINDER]` 前缀、思考换行拆词两个漏洞已修；伪造 `source` 属宿主生成、用户不可构造，标为低风险；「思考不暴露猜测就抓不到」是方案固有局限。
+对抗测试目前 **漏洞 0 / 15**：伪造 `[SCHEDULE REMINDER]` 前缀、思考换行拆词两个漏洞已修；伪造 `source` 属宿主生成、用户不可构造，标为低风险；「思考不暴露猜测就抓不到」是方案固有局限。
+
+`test/fixtures/session-real-1.jsonl` 是脱敏后的真实会话（只保留信号片段，用户消息全部 `[redacted]`），回放脚本用它当回归基线：武装率超过 50% 就红。
 
 ## 已知局限
 

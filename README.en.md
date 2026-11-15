@@ -50,6 +50,7 @@ Change it on the settings page (Settings → Ask First) or via `POST /dsh-no-gue
 | `timeoutMinutes` | `10` | after a block, how long to wait before continuing with the smallest assumption, 1–120 |
 | `maxBlocksPerTurn` | `2` | max blocks per turn, 1–10 |
 | `vagueMaxLength` | `40` | message length below which a message counts as "unclear", 10–200 |
+| `logUserText` | `false` | whether the log records user messages and reasoning snippets; by default it stores only sid / turn / tool name |
 
 ## Timeout
 
@@ -75,7 +76,9 @@ When the model's reasoning or answer contains phrases that admit it is guessing 
 
 Matching is case-insensitive and whitespace-insensitive (a phrase split across lines still matches). English conversations arm through these signals; reasoning without a guessing phrase is not blocked.
 
-> Measured (2026-11-16): with `deepseek-flash`, the `reasoning` block of assistant messages is often empty (empty reasoning + tool call), so for that model the signal mostly comes from the answer text. With models that do emit reasoning, the reasoning is scanned too.
+**Current turn only**: the gate looks at assistant messages of the current `turn` and stops at the latest `user/message` — a guess from a turn already answered no longer arms the next one.
+
+> Measured (2026-11-16, later): on this machine `deepseek-flash` assistant messages **do carry full reasoning** (421/421), so the gate scans it directly. The earlier "empty reasoning block" observation no longer applies.
 
 ## Data
 
@@ -85,7 +88,7 @@ Everything lives under `DSH_HOME/ask-first/`. If the host does not set `DSH_HOME
 |---|---|
 | `config.json` | the settings above; written atomically (temp file + rename) |
 | `sessions.json` | per-session overrides (reserved) |
-| `ask-first.log` | JSONL of every block/question/timeout; rotated at 2 MiB, keeping the tail half (`DSH_ASK_FIRST_LOG_MAX_BYTES` overrides the cap) |
+| `ask-first.log` | JSONL of every block/question/timeout; rotated at 2 MiB, keeping the tail half (`DSH_ASK_FIRST_LOG_MAX_BYTES` overrides the cap); conversation text is recorded only when `logUserText` is on |
 
 ## Install
 
@@ -103,16 +106,19 @@ Restart DSH afterwards. Settings → Ask First, or the "Ask First" button next t
 ## Tests
 
 ```bash
-npm test                 # all four suites
-node test/smoke.mjs      # 38 checks: rules / blocking / passthrough / receipts / subagents / machine turns / thinking chain
+npm test                 # all five suites
+node test/smoke.mjs      # 44 checks: rules / blocking / passthrough / receipts / subagents / machine turns / cross-turn / thinking chain / privacy
 node test/edge-cases.mjs # 20 edge samples
-node test/attack.mjs     # 10 adversarial samples (forged prefixes, split phrases, hard resistance, subagent bypass…)
-node test/config.mjs     # 19 checks: defaults/clamping, atomic writes, log rotation, cross-platform data dir
+node test/attack.mjs     # 15 adversarial samples (forged prefixes, split phrases, hard resistance, subagent bypass…)
+node test/config.mjs     # 23 checks: defaults/clamping, atomic writes, log rotation, cross-platform data dir, cache
+node test/replay.mjs     # real-session replay: thinking-gate arm rate (fixture 25%, red line 50%)
 ```
 
 The tests need no DSH runtime: fake `ctx` / fake `agent`, `DSH_HOME` pointed at a temp directory. CI runs them on ubuntu and windows with Node 18/20/22.
 
-Adversarial suite currently **0 vulnerabilities / 10 samples**: the forged `[SCHEDULE REMINDER]` prefix and the newline-split phrase have been fixed; a forged `source` is host-generated and not constructible by the user (low risk); "the model never admits it is guessing" is an inherent limitation.
+Adversarial suite currently **0 vulnerabilities / 15 samples**: the forged `[SCHEDULE REMINDER]` prefix and the newline-split phrase have been fixed; a forged `source` is host-generated and not constructible by the user (low risk); "the model never admits it is guessing" is an inherent limitation.
+
+`test/fixtures/session-real-1.jsonl` is a redacted real session (signal fragments only, user messages `[redacted]`); the replay script uses it as a regression baseline and turns red above a 50% arm rate.
 
 ## Known limitations
 

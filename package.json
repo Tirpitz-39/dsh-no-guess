@@ -1,6 +1,6 @@
 {
   "name": "dsh-no-guess",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "type": "module",
   "description": "DSH 插件：需求不清楚时先问再干 — block tool calls on unclear requests, ask before guessing",
   "exports": {
@@ -41,7 +41,7 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "test": "node test/smoke.mjs && node test/edge-cases.mjs && node test/attack.mjs && node test/config.mjs",
+    "test": "node test/smoke.mjs && node test/edge-cases.mjs && node test/attack.mjs && node test/config.mjs && node test/replay.mjs",
     "test:smoke": "node test/smoke.mjs",
     "test:edge": "node test/edge-cases.mjs",
     "test:attack": "node test/attack.mjs",

@@ -39,6 +39,17 @@ check('default: enabled', def.enabled === true)
 check('default: thinkingGate on', def.thinkingGate === true)
 check('default: ruleGate off', def.ruleGate === false)
 check('default: modelGate off', def.modelGate === false)
+check('default: logUserText off (privacy)', def.logUserText === false)
+
+// ---------------- cache ----------------
+
+const beforeCache = readConfig()
+beforeCache.enabled = false
+check('readConfig returns a copy (cache not mutable)', readConfig().enabled === true)
+const writtenCache = writeConfig({ logUserText: true })
+check('writeConfig applies logUserText', writtenCache.logUserText === true)
+check('cache is invalidated after writeConfig', readConfig().logUserText === true)
+writeConfig({ logUserText: false })
 
 // ---------------- broken / hand-edited config ----------------
 

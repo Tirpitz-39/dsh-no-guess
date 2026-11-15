@@ -36,6 +36,9 @@ const DEFAULTS = {
   thinkingGate: true,
   ruleGate: false,
   modelGate: false,
+  // Privacy: the log is on disk and may be shipped with a bug report. User
+  // text and reasoning snippets are opt-in, not opt-out.
+  logUserText: false,
 }
 
 /** Numeric config bounds; also used to sanitize hand-edited config files. */
@@ -126,10 +129,17 @@ function ensureDir() {
   } catch {}
 }
 
+/** Cache keyed on file mtime: the guard calls readConfig on every tool call. */
+const configCache = { mtimeMs: -1, value: null }
+const sessionsCache = { mtimeMs: -1, value: null }
+
 export function readConfig() {
   let raw = null
   try {
+    const stat = statSync(configPath())
+    if (configCache.value !== null && stat.mtimeMs === configCache.mtimeMs) return { ...configCache.value }
     raw = JSON.parse(readFileSync(configPath(), 'utf8'))
+    configCache.mtimeMs = stat.mtimeMs
   } catch {
     raw = null
   }
@@ -139,10 +149,12 @@ export function readConfig() {
   if (typeof src.thinkingGate === 'boolean') cfg.thinkingGate = src.thinkingGate
   if (typeof src.ruleGate === 'boolean') cfg.ruleGate = src.ruleGate
   if (typeof src.modelGate === 'boolean') cfg.modelGate = src.modelGate
+  if (typeof src.logUserText === 'boolean') cfg.logUserText = src.logUserText
   for (const key of Object.keys(LIMITS)) {
     if (src[key] !== undefined) cfg[key] = clampNumber(src[key], LIMITS[key])
   }
-  return cfg
+  configCache.value = cfg
+  return { ...cfg }
 }
 
 /** Atomic write: a crash mid-write must not leave a truncated config file. */
@@ -172,12 +184,15 @@ export function writeConfig(patch) {
     if (typeof patch.thinkingGate === 'boolean') next.thinkingGate = patch.thinkingGate
     if (typeof patch.ruleGate === 'boolean') next.ruleGate = patch.ruleGate
     if (typeof patch.modelGate === 'boolean') next.modelGate = patch.modelGate
+    if (typeof patch.logUserText === 'boolean') next.logUserText = patch.logUserText
     for (const key of Object.keys(LIMITS)) {
       if (patch[key] !== undefined) next[key] = clampNumber(patch[key], LIMITS[key])
     }
   }
   try {
     writeFileAtomic(configPath(), JSON.stringify(next, null, 2))
+    // The next read must re-stat even if the mtime has the same millisecond.
+    configCache.value = null
   } catch {}
   return next
 }
@@ -185,8 +200,13 @@ export function writeConfig(patch) {
 // Session-level overrides survive restarts: { [sid]: { enabled: boolean } }.
 export function readSessionOverrides() {
   try {
+    const stat = statSync(sessionsPath())
+    if (sessionsCache.value !== null && stat.mtimeMs === sessionsCache.mtimeMs) return { ...sessionsCache.value }
     const raw = JSON.parse(readFileSync(sessionsPath(), 'utf8'))
-    return raw && typeof raw === 'object' ? raw : {}
+    const value = raw && typeof raw === 'object' ? raw : {}
+    sessionsCache.mtimeMs = stat.mtimeMs
+    sessionsCache.value = value
+    return { ...value }
   } catch {
     return {}
   }
@@ -204,6 +224,7 @@ export function writeSessionOverride(sid, patch) {
   }
   try {
     writeFileSync(sessionsPath(), JSON.stringify(all), 'utf8')
+    sessionsCache.value = null
   } catch {}
   return all[sid]
 }
@@ -237,6 +258,11 @@ export function logLine(event, data) {
   } catch {}
 }
 
+/** Text for the log, only when the user opted in (logUserText). */
+function maybeText(cfg, text, limit = 120) {
+  return cfg && cfg.logUserText === true ? String(text ?? '').slice(0, limit) : undefined
+}
+
 // ------------------------------------------------------------------ rules
 
 export function isAck(text) {
@@ -251,19 +277,32 @@ export function isAck(text) {
 // purpose (user opted into more blocks over fewer).
 // Matching happens AFTER whitespace is stripped, so English patterns are
 // written without spaces ("I guess the user" -> "iguesstheuser").
-const GUESS_RE =
+export const GUESS_RE =
   /(我猜用户|猜用户想|不确定用户|不清楚用户|不知道用户要|用户可能是想|用户大概是想要|用户要的应该是|iguesstheuser|imguessingtheuser|guessingwhattheuser|iguessthat|iguessthis|iguessthey|iguessit|iguessits|notsurewhattheuser|unsurewhattheuser|notsurewhatyoumean|unsurewhatyoumean|dontknowwhattheuser|dontknowwhatyouwant|dontknowwhatyoumean|canttellwhattheuser|canttellwhatyoumean|theuserprobablywants|userprobablywants|theuserlikelywants|userlikelywants|theusermightwant|maybetheuserwants|perhapstheuser|assumingtheuser|ithinktheuser|ibelievetheuser|ithinkyouwant|ithinkyoumean)/i
 
-export function extractGuessText(session) {
+/**
+ * Reasoning text of THIS turn only. The snapshot keeps earlier turns too; a
+ * "用户可能是想" from a turn already answered used to stay inside the 5-message
+ * window and re-arm the next turn (cross-turn contamination).
+ *
+ * @param {any} session
+ * @param {number} [turn] current turn from agent/pre-step; when absent (old
+ *   snapshots, tests), the last user message bounds the scan instead.
+ */
+export function extractGuessText(session, turn) {
   try {
     const snap = session && Array.isArray(session.eventsSnapshot) ? session.eventsSnapshot : []
     // The newest assistant message is often an interim tool-call message whose
-    // reasoning block is empty; scan the last few and merge their reasoning.
+    // reasoning block is empty; scan the last few of the CURRENT turn and merge.
     const parts = []
     let seen = 0
     for (let i = snap.length - 1; i >= 0 && seen < 5; i -= 1) {
       const ev = snap[i]
-      if (!ev || ev.type !== 'assistant/message') continue
+      if (!ev) continue
+      if (ev.type === 'user/message') break
+      if (ev.type !== 'assistant/message') continue
+      const evTurn = ev.data && typeof ev.data.turn === 'number' ? ev.data.turn : undefined
+      if (typeof turn === 'number' && evTurn !== undefined && evTurn !== turn) continue
       seen += 1
       const msg = ev.data && ev.data.message
       const blocks = msg && Array.isArray(msg.content) ? msg.content : []
@@ -559,6 +598,7 @@ function handleRoute(ctx, states, req, res) {
           if (typeof body.modelGate === 'boolean') patch.modelGate = body.modelGate
           if (typeof body.thinkingGate === 'boolean') patch.thinkingGate = body.thinkingGate
           if (typeof body.ruleGate === 'boolean') patch.ruleGate = body.ruleGate
+          if (typeof body.logUserText === 'boolean') patch.logUserText = body.logUserText
           const next = writeConfig(patch)
           logLine('config', { patch })
           sendJson(res, 200, { ok: true, config: next })
@@ -703,11 +743,11 @@ export function apply(ctx) {
         const need = await judgeByModel(ctx, text)
         if (need === true) {
           st.armed = true
-          logLine('model-arm', { sid, text: text.slice(0, 120) })
+          logLine('model-arm', { sid, text: maybeText(cfg, text) })
         }
       } catch {}
     }
-    if (st.armed) logLine('arm', { sid, turn: st.lastTurn, text: text.slice(0, 120) })
+    if (st.armed) logLine('arm', { sid, turn: st.lastTurn, text: maybeText(cfg, text) })
   }
 
   // Global guard: block the first tool call while the request is still vague.
@@ -745,19 +785,19 @@ export function apply(ctx) {
       if (!st.armed && cfg.ruleGate === true && st.lastText) {
         if (looksVague(st.lastText, cfg.vagueMaxLength)) {
           st.armed = true
-          logLine('rule-arm', { sid, text: st.lastText.slice(0, 120) })
+          logLine('rule-arm', { sid, text: maybeText(cfg, st.lastText) })
         }
       }
       // Primary gate: the model's own reasoning admits it is guessing intent.
       // Only for turns that actually came from a human message — machine turns
       // (schedule reminders / plugin followups) have no lastText and must not arm.
       if (!st.armed && cfg.thinkingGate !== false && st.blocksThisTurn === 0 && st.lastText) {
-        const guess = extractGuessText(session)
+        const guess = extractGuessText(session, st.lastTurn)
         // Strip whitespace before matching so a newline cannot split the phrase
         // (adversarial check A5).
         if (guess && GUESS_RE.test(guess.replace(/\s+/g, ''))) {
           st.armed = true
-          logLine('guess-arm', { sid, head: guess.slice(0, 140) })
+          logLine('guess-arm', { sid, head: maybeText(cfg, guess, 140) })
         }
       }
       if (!st.armed) return next()
@@ -781,7 +821,7 @@ export function apply(ctx) {
       st.blocksThisTurn += 1
       st.blockedAt = Date.now()
       armTimeout(exec.agent, sid, st, cfg)
-      logLine('block-ask', { sid, tool, text: st.lastText.slice(0, 120) })
+      logLine('block-ask', { sid, tool, text: maybeText(cfg, st.lastText) })
       return {
         kind: 'deny',
         reason: ASK_TEXT + '\n\n你用户刚才那句：' + st.lastText.slice(0, 160),

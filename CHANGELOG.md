@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.2
+
+- **跨轮污染修复**：思考链只扫**本轮**的 assistant 消息（按 `turn` 过滤，遇到 `user/message` 也停）——上一轮已经回答过的「我猜用户」不会再武装下一轮
+- **日志隐私**：新增 `logUserText` 配置，默认 **false**——`ask-first.log` 只记 sid / turn / 工具名，不再写用户消息和思考片段；想排查误拦可开
+- **性能**：`readConfig` / `readSessionOverrides` 加 mtime 缓存，每次工具调用不再同步读盘两次
+- **真实会话回放**：新增 `test/replay.mjs` + 脱敏 fixture（真实会话，只保留信号片段、用户消息全 `[redacted]`）——统计思考链武装率，红线 50%；当前 fixture 80 个人类轮次武装 20 次（25%），并接进 `npm test` 与 CI
+- 测试：smoke 44 项（+6）、config 23 项（+4）
+- 文档：README 更新——「只扫本轮」、`logUserText`、reasoning 实测修正（本机 flash 思考块现在有内容）
+
 ## 0.4.1
 
 - 中文名定为「不猜」：设置页标题、输入框按钮、设置项文案、README 标题同步；英文副标题改为 Don't Guess
