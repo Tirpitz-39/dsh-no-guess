@@ -246,9 +246,13 @@ export function isAck(text) {
 }
 
 // Guess signal: only phrases that point AT the user's intent. Bare "我猜" is
-// too common (self-referential discussions of this very feature trip it).
+// too common (self-referential discussions of this very feature trip it), but
+// "I guess" / "I think the user" style admissions are treated as guessing on
+// purpose (user opted into more blocks over fewer).
+// Matching happens AFTER whitespace is stripped, so English patterns are
+// written without spaces ("I guess the user" -> "iguesstheuser").
 const GUESS_RE =
-  /(我猜用户|猜用户想|不确定用户|不清楚用户|不知道用户要|用户可能是想|用户大概是想要|用户要的应该是)/i
+  /(我猜用户|猜用户想|不确定用户|不清楚用户|不知道用户要|用户可能是想|用户大概是想要|用户要的应该是|iguesstheuser|imguessingtheuser|guessingwhattheuser|iguessthat|iguessthis|iguessthey|iguessit|iguessits|notsurewhattheuser|unsurewhattheuser|dontknowwhattheuser|dontknowwhatyouwant|canttellwhattheuser|canttellwhatyoumean|theuserprobablywants|userprobablywants|theuserlikelywants|userlikelywants|theusermightwant|maybetheuserwants|perhapstheuser|assumingtheuser|ithinktheuser|ibelievetheuser|ithinkyouwant|ithinkyoumean)/i
 
 export function extractGuessText(session) {
   try {

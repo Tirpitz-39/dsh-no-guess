@@ -61,7 +61,12 @@
 
 ## 思考里的「猜」信号
 
-模型的思考/正文里出现「我猜 / 不确定你 / 大概是想 / 你指的是」这类词时，视为它自己在承认「在猜」，直接拦下要求先问——不管用户那句话字面上清不清楚。
+模型的思考/正文里出现这些**承认自己在猜**的短语时，直接拦下要求先问——不管用户那句话字面上清不清楚：
+
+- 中文：「我猜用户 / 不确定用户 / 不知道用户要 / 用户可能是想 / 用户要的应该是」
+- 英文：「I guess the user / not sure what the user / I think the user / the user probably wants / I guess that / not sure what you mean」
+
+匹配大小写不敏感、匹配前去掉空白（思考里换行拆词也能抓到）。英文对话靠这些信号触发；正常推理（没写猜测词）不拦。
 
 > 实测（2026-11-16）：`deepseek-flash` 的 assistant 消息里 `reasoning` 块是空的（只有空 reasoning + tool-call），所以这个信号对 flash 主要靠正文；换成带思考内容的模型时，思考也会被扫。
 

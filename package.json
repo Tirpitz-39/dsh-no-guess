@@ -1,6 +1,6 @@
 {
   "name": "dsh-ask-first",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "DSH 插件：需求不清楚时先问再干 — block tool calls on unclear requests, ask before guessing",
   "exports": {

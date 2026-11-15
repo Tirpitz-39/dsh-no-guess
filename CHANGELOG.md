@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- **英文「猜」信号**：思考链匹配从中文扩展为中英双语——`I guess the user`、`not sure what the user`、`I think the user`、`the user probably wants`、`I guess that`、`not sure what you mean` 等；大小写不敏感、匹配前去掉空白（思考里换行拆词也能抓）
+- 对抗测试从 10 条扩到 15 条（新增 A11–A15：英文猜意图 / 通用 guess 句式 / 英文正常推理不误伤 / 大写+换行拆词 / 中英混合），漏洞 0
+- 中英文 README 同步更新「猜」信号说明
+
 ## 0.2.0
 
 发布前整理，让插件在别人的机器上也能正常工作：

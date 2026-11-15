@@ -61,7 +61,12 @@ When enabled, every message the rules did not block is sent to a model that deci
 
 ## The "guessing" signal
 
-When the model's reasoning or answer contains phrases that admit it is guessing the user's intent — "I guess the user", "not sure what you mean", "you probably want" — that is treated as the model admitting it is guessing, and the call is blocked so it asks first, regardless of how clear the user's message was.
+When the model's reasoning or answer contains phrases that admit it is guessing the user's intent, that is treated as the model admitting it is guessing, and the call is blocked so it asks first, regardless of how clear the user's message was.
+
+- Chinese phrases: 我猜用户 / 不确定用户 / 不知道用户要 / 用户可能是想 / 用户要的应该是
+- English phrases: "I guess the user" / "not sure what the user" / "I think the user" / "the user probably wants" / "I guess that" / "not sure what you mean"
+
+Matching is case-insensitive and whitespace-insensitive (a phrase split across lines still matches). English conversations arm through these signals; reasoning without a guessing phrase is not blocked.
 
 > Measured (2026-11-16): with `deepseek-flash`, the `reasoning` block of assistant messages is often empty (empty reasoning + tool call), so for that model the signal mostly comes from the answer text. With models that do emit reasoning, the reasoning is scanned too.
 
@@ -104,7 +109,7 @@ Adversarial suite currently **0 vulnerabilities / 10 samples**: the forged `[SCH
 
 ## Known limitations
 
-- **Chinese-pattern matching**: the guess phrases and the rule vocabulary are Chinese. In an English-only reasoning stream the thinking gate will not arm; a model that reasons in Chinese (as most do when the system prompt is in Chinese) still triggers it.
+- **Phrase matching, not intent understanding**: the signal is a phrase list (Chinese and English). A model that guesses intent without using any of those phrases will not arm; the English list deliberately errs on the side of more blocks, so "I guess"-style reasoning in normal work may trigger it.
 - `modelGate` sees a single message only and over-blocks
 - Work routed through `subagent` / `workflow` is not gated inside the subagent (by design — subagents should not ask the user)
 
