@@ -151,8 +151,25 @@ function ensureDir() {
   } catch {}
 }
 
+// The guard calls readConfig/readSessionOverrides on every tool call. A short
+// in-memory cache absorbs the JSON parses; writes through this module drop it
+// immediately, and hand-edited files are picked up within the TTL. The key is
+// wall-clock time, not the file's mtime — mtime has ~4ms resolution on Windows,
+// so an mtime-keyed cache served stale values after rapid rewrites.
+const CACHE_TTL_MS = 1000
+let configCache = null
+let sessionsCache = null
+
+/** Drop the in-memory config cache (used by tests and after writes). */
+export function resetConfigCache() {
+  configCache = null
+  sessionsCache = null
+}
+
 export function readConfig() {
   migrateLegacyData()
+  const now = Date.now()
+  if (configCache !== null && now - configCache.at < CACHE_TTL_MS) return { ...configCache.value }
   let raw = null
   try {
     raw = JSON.parse(readFileSync(configPath(), 'utf8'))
@@ -169,7 +186,8 @@ export function readConfig() {
   for (const key of Object.keys(LIMITS)) {
     if (src[key] !== undefined) cfg[key] = clampNumber(src[key], LIMITS[key])
   }
-  return cfg
+  configCache = { at: now, value: cfg }
+  return { ...cfg }
 }
 
 /** Atomic write: a crash mid-write must not leave a truncated config file. */
@@ -206,15 +224,20 @@ export function writeConfig(patch) {
   }
   try {
     writeFileAtomic(configPath(), JSON.stringify(next, null, 2))
+    configCache = null
   } catch {}
   return next
 }
 
 // Session-level overrides survive restarts: { [sid]: { enabled: boolean } }.
 export function readSessionOverrides() {
+  const now = Date.now()
+  if (sessionsCache !== null && now - sessionsCache.at < CACHE_TTL_MS) return { ...sessionsCache.value }
   try {
     const raw = JSON.parse(readFileSync(sessionsPath(), 'utf8'))
-    return raw && typeof raw === 'object' ? raw : {}
+    const value = raw && typeof raw === 'object' ? raw : {}
+    sessionsCache = { at: now, value }
+    return { ...value }
   } catch {
     return {}
   }
@@ -231,7 +254,8 @@ export function writeSessionOverride(sid, patch) {
     for (const key of keys.slice(0, keys.length - 500)) delete all[key]
   }
   try {
-    writeFileSync(sessionsPath(), JSON.stringify(all), 'utf8')
+    writeFileAtomic(sessionsPath(), JSON.stringify(all))
+    sessionsCache = null
   } catch {}
   return all[sid]
 }
@@ -250,7 +274,12 @@ function rotateLogIfNeeded() {
   try {
     if (statSync(logPath()).size <= LOG_MAX_BYTES) return
     const content = readFileSync(logPath(), 'utf8')
-    writeFileAtomic(logPath(), content.slice(-LOG_KEEP_BYTES))
+    // Cut at a line boundary: slicing by bytes would start the kept half with
+    // the tail of a JSONL record and break every reader of the file.
+    let start = Math.max(0, content.length - LOG_KEEP_BYTES)
+    const newline = content.indexOf('\n', start)
+    if (newline >= 0) start = newline + 1
+    writeFileAtomic(logPath(), content.slice(start))
   } catch {}
 }
 
@@ -678,7 +707,20 @@ export function apply(ctx) {
       if (!agent || isSubagentSession(agent.session)) return
       const sid = String((agent.session && agent.session.id) || agent.id || '')
       if (!sid) return
-      if (agents.has(sid)) return
+      if (agents.get(sid) === agent) return
+      // A new agent object for an existing sid: the host re-created it (session
+      // resumed, switched away and back), and the old pre-step hook died with
+      // its agent.ctx. Attach the new instance and start from clean state, or
+      // the gate silently stops firing after the first rebuild.
+      if (agents.has(sid)) {
+        const st = getState(states, sid)
+        st.lastText = ''
+        st.armed = false
+        st.askedThisTurn = false
+        st.blocksThisTurn = 0
+        st.blockedAt = 0
+        clearTimer(st)
+      }
       agents.set(sid, agent)
       const scoped = agent.ctx || ctx
       const dispose = scoped.on('agent/pre-step', async (payload, next) => {
@@ -871,6 +913,33 @@ export function apply(ctx) {
       } catch {}
     }
   }, 'dsh-no-guess: agent hooks')
+
+  // Drop per-agent state when the host disposes an agent. A later agent with
+  // the same session id (resume, switching sessions) gets a fresh attach.
+  ctx.effect(() => {
+    const off = ctx.on('agent/disposed', (payload) => {
+      try {
+        const dead = (payload && payload.agent) || payload
+        const sid = dead && dead.session ? String(dead.session.id) : ''
+        if (!sid) return
+        if (agents.get(sid) === dead) agents.delete(sid)
+        const st = states.get(sid)
+        if (st) {
+          clearTimer(st)
+          st.lastText = ''
+          st.armed = false
+          st.askedThisTurn = false
+          st.blocksThisTurn = 0
+          st.blockedAt = 0
+        }
+      } catch {}
+    })
+    return () => {
+      try {
+        off && off()
+      } catch {}
+    }
+  }, 'dsh-no-guess: agent disposed')
 
   try {
     ctx.inject(['webServer'], (child) => {

@@ -12,7 +12,7 @@ process.env.DSH_HOME = mkdtempSync(join(tmpdir(), 'no-guess-config-'))
 // Small cap so the rotation test stays fast; the plugin honours this override.
 process.env.DSH_NO_GUESS_LOG_MAX_BYTES = String(64 * 1024)
 
-const { readConfig, writeConfig, dshHome, logLine } = await import('../index.js')
+const { readConfig, writeConfig, dshHome, logLine, resetConfigCache, writeSessionOverride } = await import('../index.js')
 
 let pass = 0
 let fail = 0
@@ -51,29 +51,46 @@ check('writeConfig applies logUserText', writtenConfig.logUserText === true)
 check('writeConfig round-trips through readConfig', readConfig().logUserText === true)
 writeConfig({ logUserText: false })
 
-// Rapid hand-edits inside one filesystem mtime tick must each be read back. An
-// mtime-only cache used to serve the previous value on 4ms-resolution
-// filesystems, which made this suite flaky.
+// Rapid hand-edits must each be read back. The cache is a TTL keyed on
+// wall-clock time (an mtime key was flaky: ~4ms resolution on Windows), so a
+// hand-edited file is picked up after resetConfigCache() or the TTL.
 writeFileSync(configFile, JSON.stringify({ timeoutMinutes: 30 }), 'utf8')
+resetConfigCache()
 const rapidA = readConfig().timeoutMinutes
 writeFileSync(configFile, JSON.stringify({ timeoutMinutes: 90 }), 'utf8')
+resetConfigCache()
 const rapidB = readConfig().timeoutMinutes
 check('rapid writes are read back, not cached', rapidA === 30 && rapidB === 90, `${rapidA}/${rapidB}`)
 
 // A broken config followed by a good write must not leave the defaults behind.
 writeFileSync(configFile, '{not json', 'utf8')
+resetConfigCache()
 const brokenNow = readConfig().timeoutMinutes
 writeFileSync(configFile, JSON.stringify({ timeoutMinutes: 45 }), 'utf8')
+resetConfigCache()
 const afterBroken = readConfig().timeoutMinutes
 check('bad JSON then a good write is read back', brokenNow === 10 && afterBroken === 45, `${brokenNow}/${afterBroken}`)
+
+// sessions.json is written atomically too (tmp + rename, no leftovers).
+writeSessionOverride('s1', { enabled: false })
+writeSessionOverride('s1', { enabled: true })
+const sessionsText = readFileSync(join(dir, 'sessions.json'), 'utf8')
+let sessionsOk = false
+try {
+  sessionsOk = JSON.parse(sessionsText).s1.enabled === true
+} catch {}
+check('sessions.json stays valid JSON after writes', sessionsOk)
+check('sessions.json leaves no tmp files', readdirSync(dir).filter(f => f.includes('.tmp-')).length === 0)
 
 // ---------------- broken / hand-edited config ----------------
 
 writeFileSync(configFile, '{not json', 'utf8')
+resetConfigCache()
 const broken = readConfig()
 check('broken JSON falls back to defaults', broken.enabled === true && broken.timeoutMinutes === 10 && broken.ruleGate === false)
 
 writeFileSync(configFile, JSON.stringify({ timeoutMinutes: 999, maxBlocksPerTurn: -5, vagueMaxLength: 'abc', enabled: 'yes' }), 'utf8')
+resetConfigCache()
 const clamped = readConfig()
 check('timeoutMinutes clamped to 120', clamped.timeoutMinutes === 120, clamped.timeoutMinutes)
 check('maxBlocksPerTurn clamped to 1', clamped.maxBlocksPerTurn === 1, clamped.maxBlocksPerTurn)
@@ -123,6 +140,7 @@ const legacyDir = join(process.env.DSH_HOME, 'ask-first')
 mkdirSync(legacyDir, { recursive: true })
 writeFileSync(join(legacyDir, 'config.json'), JSON.stringify({ timeoutMinutes: 7 }), 'utf8')
 rmSync(dir, { recursive: true, force: true })
+resetConfigCache()
 const migrated = readConfig()
 check('legacy ask-first config migrates to no-guess', migrated.timeoutMinutes === 7, migrated.timeoutMinutes)
 check('new data dir exists after migration', existsSync(dir))

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.5
+
+按代码评审修四处：
+
+- **会话重建后静默失效**：`attachAgent` 原来按 sid 去重，宿主重建同一会话的 agent 后，新实例不再挂 `agent/pre-step`（旧 hook 随旧 `agent.ctx` 销毁），gate 会静默停止。现在按实例去重，并监听 `agent/disposed` 清状态，重建后重新挂载
+- **热路径读盘**：`readConfig` / `readSessionOverrides` 加 1 秒内存缓存（不是 mtime key——4ms 精度问题踩过），写入即时失效，手改文件最多 1 秒生效
+- **sessions.json 原子写**：改为临时文件 + rename，与 config.json 一致
+- **日志轮转按行对齐**：原来按字节切，可能把一条 JSONL 从中间切开；现在切到下一个换行之后
+- 测试：smoke 49（+2 重建）、config 29（+2 sessions 原子写）
+
 ## 0.4.4
 
 - **数据目录改名**：`$DSH_HOME/ask-first/` → `$DSH_HOME/no-guess/`，日志同步改为 `no-guess.log`；首次读取时自动从旧目录复制配置（旧目录保留不删），已有配置不丢。旧环境变量 `DSH_ASK_FIRST_LOG_MAX_BYTES` 仍兼容，新名 `DSH_NO_GUESS_LOG_MAX_BYTES`

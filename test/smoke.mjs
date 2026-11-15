@@ -70,13 +70,14 @@ check('extractUserText skips schedule reminders', scheduleText === '', scheduleT
 // ---------------- guard ----------------
 
 function makeCtx() {
-  const handlers = { preExecute: [], agentCreated: [] }
+  const handlers = { preExecute: [], agentCreated: [], agentDisposed: [] }
   return {
     handlers,
     logger: { info() {}, warn() {} },
     on(event, fn) {
       if (event === 'tools/pre-execute') handlers.preExecute.push(fn)
       if (event === 'agent/created') handlers.agentCreated.push(fn)
+      if (event === 'agent/disposed') handlers.agentDisposed.push(fn)
       return () => {}
     },
     effect(fn) {
@@ -336,6 +337,19 @@ writeConfig({ logUserText: false })
   const replay = replaySession(replayText)
   check('replay: only human turns are counted', replay.humanTurns === 1, JSON.stringify(replay))
   check('replay: an armed turn reports armed', replay.turns.length === 1 && replay.turns[0].armed === true, JSON.stringify(replay.turns))
+}
+
+// The host re-creates an agent for the same session on resume/session switch.
+// The old pre-step hook died with its agent.ctx, so the new instance must be
+// attached again instead of being skipped by the sid dedupe.
+{
+  const oldAgent = makeAgent('s-rebuild', { origin: 'web' })
+  ctx.handlers.agentCreated[0]({ agent: oldAgent })
+  check('rebuild: first agent gets a pre-step hook', oldAgent.preStep.length === 1)
+  ctx.handlers.agentDisposed[0]({ agent: oldAgent })
+  const newAgent = makeAgent('s-rebuild', { origin: 'web' })
+  ctx.handlers.agentCreated[0]({ agent: newAgent })
+  check('rebuild: re-created agent attaches again', newAgent.preStep.length === 1, newAgent.preStep.length)
 }
 
 console.log('SELFTEST PASS=' + pass + ' FAIL=' + fail)

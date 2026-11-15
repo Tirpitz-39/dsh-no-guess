@@ -111,10 +111,10 @@ Restart DSH afterwards. Settings → Ask First, or the "Ask First" button next t
 
 ```bash
 npm test                 # all five suites
-node test/smoke.mjs      # 47 checks: rules / blocking / passthrough / receipts / subagents / machine turns / cross-turn / thinking chain / intent suffix / self-discussion / privacy
+node test/smoke.mjs      # 49 checks: rules / blocking / passthrough / receipts / subagents / machine turns / cross-turn / thinking chain / intent suffix / self-discussion / privacy / rebuild
 node test/edge-cases.mjs # 20 edge samples
 node test/attack.mjs     # 15 adversarial samples (forged prefixes, split phrases, hard resistance, subagent bypass…)
-node test/config.mjs     # 25 checks: defaults/clamping, atomic writes, log rotation, cross-platform data dir, rapid write/read
+node test/config.mjs     # 29 checks: defaults/clamping, atomic writes, log rotation, cross-platform data dir, rapid write/read, migration, sessions atomic write
 node test/replay.mjs     # real-session replay: thinking-gate arm rate (fixture 25%, red line 50%)
 ```
 
