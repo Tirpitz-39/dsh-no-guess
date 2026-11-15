@@ -6,9 +6,9 @@
 //     本轮问过之后还接着动手，再拦一次（问完就停）
 //
 // Fail-open everywhere: a broken guard must never brick the harness.
-// Output of the HTTP route is JSON; config lives in $DSH_HOME/ask-first/.
+// Output of the HTTP route is JSON; config lives in $DSH_HOME/no-guess/.
 
-import { readFileSync, writeFileSync, mkdirSync, appendFileSync, renameSync, statSync, unlinkSync } from 'node:fs'
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
@@ -111,7 +111,28 @@ export function dshHome() {
 }
 
 function dataDir() {
-  return join(dshHome(), 'ask-first')
+  return join(dshHome(), 'no-guess')
+}
+
+/**
+ * One-time migration from the pre-rename data directory (`ask-first`). The
+ * plugin was called that until 0.4.0; existing config must survive the rename.
+ * The old directory is left untouched — copying is cheap and deleting user
+ * data to save a kilobyte is not worth a single bad guess.
+ */
+function migrateLegacyData() {
+  try {
+    const next = dataDir()
+    const legacy = join(dshHome(), 'ask-first')
+    if (existsSync(next) || !existsSync(legacy)) return
+    mkdirSync(next, { recursive: true })
+    for (const name of readdirSync(legacy)) {
+      const from = join(legacy, name)
+      const to = join(next, name)
+      if (existsSync(to)) continue
+      if (statSync(from).isFile()) copyFileSync(from, to)
+    }
+  } catch {}
 }
 function configPath() {
   return join(dataDir(), 'config.json')
@@ -120,16 +141,18 @@ function sessionsPath() {
   return join(dataDir(), 'sessions.json')
 }
 function logPath() {
-  return join(dataDir(), 'ask-first.log')
+  return join(dataDir(), 'no-guess.log')
 }
 
 function ensureDir() {
   try {
+    migrateLegacyData()
     mkdirSync(dataDir(), { recursive: true })
   } catch {}
 }
 
 export function readConfig() {
+  migrateLegacyData()
   let raw = null
   try {
     raw = JSON.parse(readFileSync(configPath(), 'utf8'))
@@ -214,7 +237,9 @@ export function writeSessionOverride(sid, patch) {
 }
 
 const LOG_MAX_BYTES = (() => {
-  const n = Number(process.env.DSH_ASK_FIRST_LOG_MAX_BYTES)
+  // DSH_ASK_FIRST_LOG_MAX_BYTES is the pre-rename name, kept as a fallback.
+  const raw = process.env.DSH_NO_GUESS_LOG_MAX_BYTES ?? process.env.DSH_ASK_FIRST_LOG_MAX_BYTES
+  const n = Number(raw)
   return Number.isFinite(n) && n >= 16 * 1024 ? Math.floor(n) : 2 * 1024 * 1024
 })()
 const LOG_KEEP_BYTES = Math.max(1024, Math.floor(LOG_MAX_BYTES / 2))

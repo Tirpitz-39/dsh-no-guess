@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.4
+
+- **数据目录改名**：`$DSH_HOME/ask-first/` → `$DSH_HOME/no-guess/`，日志同步改为 `no-guess.log`；首次读取时自动从旧目录复制配置（旧目录保留不删），已有配置不丢。旧环境变量 `DSH_ASK_FIRST_LOG_MAX_BYTES` 仍兼容，新名 `DSH_NO_GUESS_LOG_MAX_BYTES`
+- **本地仓库目录改名**：`E:\DSH\dev\plugins\dsh-ask-first` → `dsh-no-guess`，profile 的 `file:` 路径同步
+- 测试：config 27 项（+2：旧目录迁移、迁移后数据目录存在）
+
 ## 0.4.3
 
 - **词表收窄**：`不确定用户` / `不清楚用户` 必须后接意图词（想 / 要 / 需要 / 偏好 / 指 / 是 / 的意图）——「不确定用户配置」这类想去读文件、不是猜意图的思考不再武装

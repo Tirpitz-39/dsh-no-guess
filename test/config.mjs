@@ -4,13 +4,13 @@
 //
 // Covers what the smoke test does not: config defaults/sanitizing, atomic
 // writes, bounded logs, and cross-platform DSH_HOME resolution.
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir, homedir } from 'node:os'
 import { join } from 'node:path'
 
-process.env.DSH_HOME = mkdtempSync(join(tmpdir(), 'ask-first-config-'))
+process.env.DSH_HOME = mkdtempSync(join(tmpdir(), 'no-guess-config-'))
 // Small cap so the rotation test stays fast; the plugin honours this override.
-process.env.DSH_ASK_FIRST_LOG_MAX_BYTES = String(64 * 1024)
+process.env.DSH_NO_GUESS_LOG_MAX_BYTES = String(64 * 1024)
 
 const { readConfig, writeConfig, dshHome, logLine } = await import('../index.js')
 
@@ -26,7 +26,7 @@ function check(name, cond, extra) {
   }
 }
 
-const dir = join(process.env.DSH_HOME, 'ask-first')
+const dir = join(process.env.DSH_HOME, 'no-guess')
 mkdirSync(dir, { recursive: true })
 const configFile = join(dir, 'config.json')
 
@@ -105,7 +105,7 @@ process.env.DSH_HOME = savedHome
 
 // ---------------- log rotation ----------------
 
-const logFile = join(dir, 'ask-first.log')
+const logFile = join(dir, 'no-guess.log')
 for (let i = 0; i < 2000; i += 1) logLine('test', { i, pad: 'x'.repeat(80) })
 const size = statSync(logFile).size
 check('log stays bounded after rotation', size <= 64 * 1024, size)
@@ -116,6 +116,16 @@ try {
   tailOk = typeof JSON.parse(tail).event === 'string'
 } catch {}
 check('log tail is still a complete JSONL line', tailOk, tail.slice(0, 80))
+
+// ---------------- legacy data migration (ask-first -> no-guess) ----------------
+
+const legacyDir = join(process.env.DSH_HOME, 'ask-first')
+mkdirSync(legacyDir, { recursive: true })
+writeFileSync(join(legacyDir, 'config.json'), JSON.stringify({ timeoutMinutes: 7 }), 'utf8')
+rmSync(dir, { recursive: true, force: true })
+const migrated = readConfig()
+check('legacy ask-first config migrates to no-guess', migrated.timeoutMinutes === 7, migrated.timeoutMinutes)
+check('new data dir exists after migration', existsSync(dir))
 
 console.log('CONFIGTEST PASS=' + pass + ' FAIL=' + fail)
 if (fail > 0) process.exit(1)

@@ -6,7 +6,7 @@ import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-process.env.DSH_HOME = mkdtempSync(join(tmpdir(), 'ask-first-test-'))
+process.env.DSH_HOME = mkdtempSync(join(tmpdir(), 'no-guess-test-'))
 
 const mod = await import('../index.js')
 const { apply, looksVague, isAck, extractUserText, writeConfig } = mod
@@ -290,7 +290,7 @@ check('self-discussion: plugin name in the user message exempts the turn', selfT
 agent.session.eventsSnapshot = []
 
 // privacy: the log must not carry user text unless logUserText is on
-const LOG_FILE = join(process.env.DSH_HOME, 'ask-first', 'ask-first.log')
+const LOG_FILE = join(process.env.DSH_HOME, 'no-guess', 'no-guess.log')
 writeConfig({ enabled: true, ruleGate: false, logUserText: false })
 await runPreStep(agent, '那个怎么样', 121)
 agent.session.eventsSnapshot = [

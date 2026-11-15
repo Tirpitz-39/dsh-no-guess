@@ -86,13 +86,13 @@
 
 ## 数据
 
-都在 `DSH_HOME` 下的 `ask-first/`：宿主设置了 `DSH_HOME` 就用它，否则用 `~/.dsh/ask-first/`（与 DSH 官方的目录解析一致，Windows / macOS / Linux 通用）。目录名沿用改名前的 `ask-first`，只影响实现细节，不影响插件名。
+都在 `DSH_HOME` 下的 `no-guess/`：宿主设置了 `DSH_HOME` 就用它，否则用 `~/.dsh/no-guess/`（与 DSH 官方的目录解析一致，Windows / macOS / Linux 通用）。改名前的 `ask-first/` 会在首次读取时自动迁移过来（旧目录保留不删），已有配置不丢。
 
 | 文件 | 内容 |
 |---|---|
 | `config.json` | 上面的配置项；写入是原子的（临时文件 + rename） |
 | `sessions.json` | 每会话的临时覆盖（预留） |
-| `ask-first.log` | 每次拦截/提问/超时的 JSONL 记录，超过 2 MiB 自动轮转保留尾部一半（可用 `DSH_ASK_FIRST_LOG_MAX_BYTES` 调整上限）；默认不写对话内容，`logUserText: true` 才记片段 |
+| `no-guess.log` | 每次拦截/提问/超时的 JSONL 记录，超过 2 MiB 自动轮转保留尾部一半（可用 `DSH_NO_GUESS_LOG_MAX_BYTES` 调整上限）；默认不写对话内容，`logUserText: true` 才记片段 |
 
 ## 安装
 

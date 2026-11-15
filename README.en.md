@@ -86,13 +86,13 @@ Matching is case-insensitive and whitespace-insensitive (a phrase split across l
 
 ## Data
 
-Everything lives under `DSH_HOME/ask-first/`. If the host does not set `DSH_HOME`, the fallback is `~/.dsh/ask-first/` (same resolution order as DSH itself; works on Windows, macOS and Linux). The directory keeps its pre-rename name `ask-first`; that is an implementation detail and does not affect the plugin name.
+Everything lives under `DSH_HOME/no-guess/`. If the host does not set `DSH_HOME`, the fallback is `~/.dsh/no-guess/` (same resolution order as DSH itself; works on Windows, macOS and Linux). A pre-rename `ask-first/` directory is migrated on first read (the old one is kept), so existing config survives.
 
 | File | Contents |
 |---|---|
 | `config.json` | the settings above; written atomically (temp file + rename) |
 | `sessions.json` | per-session overrides (reserved) |
-| `ask-first.log` | JSONL of every block/question/timeout; rotated at 2 MiB, keeping the tail half (`DSH_ASK_FIRST_LOG_MAX_BYTES` overrides the cap); conversation text is recorded only when `logUserText` is on |
+| `no-guess.log` | JSONL of every block/question/timeout; rotated at 2 MiB, keeping the tail half (`DSH_NO_GUESS_LOG_MAX_BYTES` overrides the cap); conversation text is recorded only when `logUserText` is on |
 
 ## Install
 
