@@ -60,10 +60,15 @@
 ## 安装
 
 ```bash
-dsh plugin add file:E:/DSH/dev/plugins/dsh-ask-first
+git clone https://github.com/Tirpitz-39/dsh-ask-first
+dsh plugin add file:./dsh-ask-first
 ```
 
+本地开发时也可以直接指向自己的目录（`dsh plugin add file:<插件目录>`）。
+
 装完**重启 DSH**。设置 → 先问，或输入框旁的「先问」按钮。
+
+数据目录默认 `$DSH_HOME/ask-first/`；宿主没设 `DSH_HOME` 时兜底为 `E:\DSH`（本机路径，别的机器请显式设置 `DSH_HOME`）。
 
 ## 测试
 
