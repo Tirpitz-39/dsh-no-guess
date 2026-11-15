@@ -2,6 +2,8 @@
 
 > 不明白就先问。用户那句话说不清楚时，模型不许猜着做。
 
+[English](README.en.md) | **中文**
+
 [![test](https://github.com/Tirpitz-39/dsh-ask-first/actions/workflows/test.yml/badge.svg)](https://github.com/Tirpitz-39/dsh-ask-first/actions/workflows/test.yml)
 
 ## 它做什么
