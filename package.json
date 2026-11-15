@@ -1,8 +1,8 @@
 {
   "name": "dsh-ask-first",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
-  "description": "不明白就先问：需求不清楚时拦截工具调用，强制先向用户提问",
+  "description": "DSH 插件：需求不清楚时先问再干 — block tool calls on unclear requests, ask before guessing",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
@@ -12,7 +12,8 @@
     "index.js",
     "client.js",
     "cordis.patch.yml",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "dsh": {
     "bundle": {
@@ -27,6 +28,35 @@
       ]
     }
   },
-  "keywords": ["dsh", "dsh-plugin", "clarify", "ask-first"],
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "dsh-bundle",
+    "ask-first",
+    "clarify",
+    "clarification",
+    "guard"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "test": "node test/smoke.mjs && node test/edge-cases.mjs && node test/attack.mjs && node test/config.mjs",
+    "test:smoke": "node test/smoke.mjs",
+    "test:edge": "node test/edge-cases.mjs",
+    "test:attack": "node test/attack.mjs",
+    "prepublishOnly": "npm test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Tirpitz-39/dsh-ask-first.git"
+  },
+  "homepage": "https://github.com/Tirpitz-39/dsh-ask-first#readme",
+  "bugs": {
+    "url": "https://github.com/Tirpitz-39/dsh-ask-first/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "license": "MIT"
 }

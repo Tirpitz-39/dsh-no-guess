@@ -114,46 +114,116 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function useConfig() {
-      const [config, setConfig] = React.useState(null)
-      React.useEffect(() => {
-        let alive = true
-        const load = () => {
-          fetch(API + '/config', { cache: 'no-store' })
-            .then((response) => (response.ok ? response.json() : null))
-            .then((data) => {
-              if (alive && data && data.config) setConfig(data.config)
-            })
-            .catch(() => {})
-        }
-        load()
-        const timer = setInterval(load, 3000)
-        return () => {
-          alive = false
-          clearInterval(timer)
-        }
-      }, [])
-      return [config, setConfig]
+    // ---- shared config store ----
+    // Both slots (composer button + settings page) read the same config; one
+    // poller keeps them in sync instead of each component polling on its own.
+    let sharedConfig = null
+    let pollTimer = null
+    const listeners = new Set()
+
+    function notify() {
+      for (const fn of listeners) {
+        try {
+          fn(sharedConfig)
+        } catch {}
+      }
     }
 
-    function writeConfig(patch) {
+    function refresh() {
+      fetch(API + '/config', { cache: 'no-store' })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((data) => {
+          if (data && data.config) {
+            sharedConfig = data.config
+            notify()
+          }
+        })
+        .catch(() => {})
+    }
+
+    function ensurePolling() {
+      if (pollTimer !== null) return
+      refresh()
+      pollTimer = setInterval(refresh, 3000)
+    }
+
+    function stopPollingIfUnused() {
+      if (listeners.size === 0 && pollTimer !== null) {
+        clearInterval(pollTimer)
+        pollTimer = null
+      }
+    }
+
+    function saveConfig(patch) {
       return fetch(API + '/config', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(patch),
       })
         .then((response) => (response.ok ? response.json() : null))
+        .then((data) => {
+          if (data && data.config) {
+            sharedConfig = data.config
+            notify()
+          }
+          return data
+        })
         .catch(() => null)
+    }
+
+    function useConfig() {
+      const [config, setConfig] = React.useState(sharedConfig)
+      React.useEffect(() => {
+        const apply = (next) => setConfig(next)
+        listeners.add(apply)
+        if (sharedConfig) setConfig(sharedConfig)
+        ensurePolling()
+        return () => {
+          listeners.delete(apply)
+          stopPollingIfUnused()
+        }
+      }, [])
+      return [config || sharedConfig]
+    }
+
+    // Numeric field: keeps a local draft while typing and commits on blur/Enter,
+    // so every keystroke does not hit the config endpoint.
+    function NumberField({ value, onCommit, min, max }) {
+      const editing = React.useRef(false)
+      const [draft, setDraft] = React.useState(String(value))
+      React.useEffect(() => {
+        if (!editing.current) setDraft(String(value))
+      }, [value])
+      const commit = () => {
+        editing.current = false
+        const n = Number(draft)
+        if (Number.isFinite(n) && n !== Number(value)) onCommit(n)
+        else setDraft(String(value))
+      }
+      return h('input', {
+        type: 'number',
+        min,
+        max,
+        value: draft,
+        style: styles.input,
+        onFocus: () => {
+          editing.current = true
+        },
+        onChange: (event) => setDraft(event.target.value),
+        onBlur: commit,
+        onKeyDown: (event) => {
+          if (event.key === 'Enter') event.currentTarget.blur()
+        },
+      })
     }
 
     // ---- 输入框旁的开关 ----
 
     function Quick() {
-      const [config, setConfig] = useConfig()
+      const [config] = useConfig()
       const enabled = !config || config.enabled !== false
       const toggle = () => {
-        setConfig((previous) => ({ ...(previous || {}), enabled: !enabled }))
-        writeConfig({ enabled: !enabled })
+        saveConfig({ enabled: !enabled })
       }
       return h(
         'button',
@@ -194,15 +264,14 @@ window.__ModuleLoader__.load({
     // ---- 设置页 ----
 
     function SettingsPage() {
-      const [config, setConfig] = useConfig()
+      const [config] = useConfig()
       const [status, setStatus] = React.useState('')
       const cfg = config || {}
       const enabled = cfg.enabled !== false
       const save = (patch) => {
         setStatus('保存中…')
-        writeConfig(patch).then((data) => {
-          if (data && data.config) setConfig(data.config)
-          setStatus('已保存')
+        saveConfig(patch).then((data) => {
+          setStatus(data ? '已保存' : '保存失败')
           setTimeout(() => setStatus(''), 1500)
         })
       }
@@ -227,25 +296,21 @@ window.__ModuleLoader__.load({
           h(Row, {
             label: '没回复多久后按最小假设继续',
             hint: '单位分钟，1–120。默认 10。',
-            children: h('input', {
-              type: 'number',
+            children: h(NumberField, {
+              value: cfg.timeoutMinutes ?? 10,
               min: 1,
               max: 120,
-              value: String(cfg.timeoutMinutes ?? 10),
-              style: styles.input,
-              onChange: (event) => save({ timeoutMinutes: Number(event.target.value) }),
+              onCommit: (n) => save({ timeoutMinutes: n }),
             }),
           }),
           h(Row, {
             label: '每轮最多拦几次',
             hint: '默认 2。拦满后放行，宁少拦不卡死。',
-            children: h('input', {
-              type: 'number',
+            children: h(NumberField, {
+              value: cfg.maxBlocksPerTurn ?? 2,
               min: 1,
               max: 10,
-              value: String(cfg.maxBlocksPerTurn ?? 2),
-              style: styles.input,
-              onChange: (event) => save({ maxBlocksPerTurn: Number(event.target.value) }),
+              onCommit: (n) => save({ maxBlocksPerTurn: n }),
             }),
           }),
           h(Row, {
@@ -261,13 +326,11 @@ window.__ModuleLoader__.load({
           h(Row, {
             label: '多短算「说不清」',
             hint: '消息字数上限，默认 40。',
-            children: h('input', {
-              type: 'number',
+            children: h(NumberField, {
+              value: cfg.vagueMaxLength ?? 40,
               min: 10,
               max: 200,
-              value: String(cfg.vagueMaxLength ?? 40),
-              style: styles.input,
-              onChange: (event) => save({ vagueMaxLength: Number(event.target.value) }),
+              onCommit: (n) => save({ vagueMaxLength: n }),
             }),
           }),
           h(Row, {
@@ -297,13 +360,8 @@ window.__ModuleLoader__.load({
         )
         ctx.slots.inject('settings.section', () =>
           ctx.slots.register(
-            {
-              name: 'settings.section',
-              id: 'dsh-ask-first',
-              order: 62,
-              label: () => '先问',
-              inject: () => ({}),
-            },            SettingsPage,
+            { name: 'settings.section', id: 'dsh-ask-first', order: 62, label: () => '先问', inject: () => ({}) },
+            SettingsPage,
           ),
         )
       },

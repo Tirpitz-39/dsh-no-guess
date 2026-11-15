@@ -8,8 +8,9 @@
 // Fail-open everywhere: a broken guard must never brick the harness.
 // Output of the HTTP route is JSON; config lives in $DSH_HOME/ask-first/.
 
-import { readFileSync, writeFileSync, mkdirSync, appendFileSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, appendFileSync, renameSync, statSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
+import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 
 export const name = 'dsh-ask-first'
@@ -17,12 +18,38 @@ export const inject = ['tools']
 
 const ROUTE_PREFIX = '/dsh-ask-first'
 
+/** Plugin version, read from package.json next to this file (best effort). */
+const VERSION = (() => {
+  try {
+    const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
+    return typeof pkg.version === 'string' && pkg.version ? pkg.version : '0.0.0'
+  } catch {
+    return '0.0.0'
+  }
+})()
+
 const DEFAULTS = {
   enabled: true,
   timeoutMinutes: 10,
   maxBlocksPerTurn: 2,
   vagueMaxLength: 40,
+  thinkingGate: true,
+  ruleGate: false,
   modelGate: false,
+}
+
+/** Numeric config bounds; also used to sanitize hand-edited config files. */
+const LIMITS = {
+  timeoutMinutes: { min: 1, max: 120, def: 10, int: true },
+  maxBlocksPerTurn: { min: 1, max: 10, def: 2, int: true },
+  vagueMaxLength: { min: 10, max: 200, def: 40, int: true },
+}
+
+function clampNumber(value, spec) {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return spec.def
+  const rounded = spec.int ? Math.round(n) : n
+  return Math.min(spec.max, Math.max(spec.min, rounded))
 }
 
 // Tools that never count as "动手": asking is the whole point, todo bookkeeping
@@ -70,11 +97,14 @@ const STOP_TEXT =
 
 // ------------------------------------------------------------------ paths
 
-function dshHome() {
+/**
+ * DSH data root. Same resolution order as the harness itself:
+ * config.dshHome (not reachable here) -> $DSH_HOME -> ~/.dsh.
+ */
+export function dshHome() {
   const env = process.env.DSH_HOME
   if (typeof env === 'string' && env) return env
-  // 本机数据目录固定在 E 盘；这不是通用路径，只是兜底。
-  return 'E:\\DSH'
+  return join(homedir(), '.dsh')
 }
 
 function dataDir() {
@@ -97,19 +127,57 @@ function ensureDir() {
 }
 
 export function readConfig() {
+  let raw = null
   try {
-    const raw = JSON.parse(readFileSync(configPath(), 'utf8'))
-    return { ...DEFAULTS, ...(raw && typeof raw === 'object' ? raw : {}) }
+    raw = JSON.parse(readFileSync(configPath(), 'utf8'))
   } catch {
-    return { ...DEFAULTS }
+    raw = null
+  }
+  const src = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
+  const cfg = { ...DEFAULTS }
+  if (typeof src.enabled === 'boolean') cfg.enabled = src.enabled
+  if (typeof src.thinkingGate === 'boolean') cfg.thinkingGate = src.thinkingGate
+  if (typeof src.ruleGate === 'boolean') cfg.ruleGate = src.ruleGate
+  if (typeof src.modelGate === 'boolean') cfg.modelGate = src.modelGate
+  for (const key of Object.keys(LIMITS)) {
+    if (src[key] !== undefined) cfg[key] = clampNumber(src[key], LIMITS[key])
+  }
+  return cfg
+}
+
+/** Atomic write: a crash mid-write must not leave a truncated config file. */
+function writeFileAtomic(file, content) {
+  const tmp = file + '.tmp-' + process.pid
+  try {
+    writeFileSync(tmp, content, 'utf8')
+    renameSync(tmp, file)
+  } catch (error) {
+    try {
+      unlinkSync(tmp)
+    } catch {}
+    // Direct write as a last resort (e.g. filesystem without rename).
+    try {
+      writeFileSync(file, content, 'utf8')
+    } catch {
+      throw error
+    }
   }
 }
 
 export function writeConfig(patch) {
   ensureDir()
-  const next = { ...readConfig(), ...(patch ?? {}) }
+  const next = readConfig()
+  if (patch && typeof patch === 'object') {
+    if (typeof patch.enabled === 'boolean') next.enabled = patch.enabled
+    if (typeof patch.thinkingGate === 'boolean') next.thinkingGate = patch.thinkingGate
+    if (typeof patch.ruleGate === 'boolean') next.ruleGate = patch.ruleGate
+    if (typeof patch.modelGate === 'boolean') next.modelGate = patch.modelGate
+    for (const key of Object.keys(LIMITS)) {
+      if (patch[key] !== undefined) next[key] = clampNumber(patch[key], LIMITS[key])
+    }
+  }
   try {
-    writeFileSync(configPath(), JSON.stringify(next, null, 2), 'utf8')
+    writeFileAtomic(configPath(), JSON.stringify(next, null, 2))
   } catch {}
   return next
 }
@@ -140,9 +208,31 @@ export function writeSessionOverride(sid, patch) {
   return all[sid]
 }
 
+const LOG_MAX_BYTES = (() => {
+  const n = Number(process.env.DSH_ASK_FIRST_LOG_MAX_BYTES)
+  return Number.isFinite(n) && n >= 16 * 1024 ? Math.floor(n) : 2 * 1024 * 1024
+})()
+const LOG_KEEP_BYTES = Math.max(1024, Math.floor(LOG_MAX_BYTES / 2))
+let logWritesSinceCheck = 0
+
+/** Keep the JSONL log bounded: rotate to the tail half once it passes 2 MiB. */
+function rotateLogIfNeeded() {
+  try {
+    if (statSync(logPath()).size <= LOG_MAX_BYTES) return
+    const content = readFileSync(logPath(), 'utf8')
+    writeFileAtomic(logPath(), content.slice(-LOG_KEEP_BYTES))
+  } catch {}
+}
+
 export function logLine(event, data) {
   try {
     ensureDir()
+    // logLine sits on the tool-call path; only stat the file every 128 writes.
+    logWritesSinceCheck += 1
+    if (logWritesSinceCheck >= 128) {
+      logWritesSinceCheck = 0
+      rotateLogIfNeeded()
+    }
     appendFileSync(logPath(), JSON.stringify({ t: new Date().toISOString(), event, ...(data ?? {}) }) + '\n', 'utf8')
   } catch {}
 }
@@ -455,49 +545,43 @@ function handleRoute(ctx, states, req, res) {
       return sendJson(res, 200, { ok: true, config: cfg })
     }
     if (req.method === 'POST' && path === '/config') {
-    readJsonBody(req)
-      .then((body) => {
-        const patch = {}
-        if (typeof body.enabled === 'boolean') patch.enabled = body.enabled
-        if (body.timeoutMinutes !== undefined) {
-          patch.timeoutMinutes = Math.min(120, Math.max(1, Math.round(Number(body.timeoutMinutes) || DEFAULTS.timeoutMinutes)))
-        }
-        if (body.maxBlocksPerTurn !== undefined) {
-          patch.maxBlocksPerTurn = Math.min(10, Math.max(1, Math.round(Number(body.maxBlocksPerTurn) || DEFAULTS.maxBlocksPerTurn)))
-        }
-        if (body.vagueMaxLength !== undefined) {
-          patch.vagueMaxLength = Math.min(200, Math.max(10, Math.round(Number(body.vagueMaxLength) || DEFAULTS.vagueMaxLength)))
-        }
-        if (typeof body.modelGate === 'boolean') patch.modelGate = body.modelGate
-        if (typeof body.thinkingGate === 'boolean') patch.thinkingGate = body.thinkingGate
-        if (typeof body.ruleGate === 'boolean') patch.ruleGate = body.ruleGate
-        const next = writeConfig(patch)
-        logLine('config', { patch })
-        sendJson(res, 200, { ok: true, config: next })
-      })
-      .catch((error) => sendJson(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) }))
-    return
-  }
-  if (req.method === 'POST' && path === '/session') {
-    readJsonBody(req)
-      .then((body) => {
-        const sid = typeof body.sessionId === 'string' ? body.sessionId : ''
-        if (!sid) return sendJson(res, 400, { ok: false, error: 'sessionId required' })
-        const patch = {}
-        if (typeof body.enabled === 'boolean') patch.enabled = body.enabled
-        const all = readSessionOverrides()
-        const prev = all[sid] && typeof all[sid] === 'object' ? { ...all[sid] } : {}
-        delete prev.updatedAt
-        if (typeof body.enabled !== 'boolean') delete prev.enabled
-        writeSessionOverride(sid, { ...prev, ...patch })
-        const st = states.get(sid)
-        if (st) clearTimer(st)
-        logLine('session', { sid, enabled: patch.enabled })
-        return sendJson(res, 200, { ok: true })
-      })
-      .catch((error) => sendJson(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) }))
-    return
-  }
+      readJsonBody(req)
+        .then((body) => {
+          const patch = {}
+          if (typeof body.enabled === 'boolean') patch.enabled = body.enabled
+          if (body.timeoutMinutes !== undefined) patch.timeoutMinutes = body.timeoutMinutes
+          if (body.maxBlocksPerTurn !== undefined) patch.maxBlocksPerTurn = body.maxBlocksPerTurn
+          if (body.vagueMaxLength !== undefined) patch.vagueMaxLength = body.vagueMaxLength
+          if (typeof body.modelGate === 'boolean') patch.modelGate = body.modelGate
+          if (typeof body.thinkingGate === 'boolean') patch.thinkingGate = body.thinkingGate
+          if (typeof body.ruleGate === 'boolean') patch.ruleGate = body.ruleGate
+          const next = writeConfig(patch)
+          logLine('config', { patch })
+          sendJson(res, 200, { ok: true, config: next })
+        })
+        .catch((error) => sendJson(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) }))
+      return
+    }
+    if (req.method === 'POST' && path === '/session') {
+      readJsonBody(req)
+        .then((body) => {
+          const sid = typeof body.sessionId === 'string' ? body.sessionId : ''
+          if (!sid) return sendJson(res, 400, { ok: false, error: 'sessionId required' })
+          const patch = {}
+          if (typeof body.enabled === 'boolean') patch.enabled = body.enabled
+          const all = readSessionOverrides()
+          const prev = all[sid] && typeof all[sid] === 'object' ? { ...all[sid] } : {}
+          delete prev.updatedAt
+          if (typeof body.enabled !== 'boolean') delete prev.enabled
+          writeSessionOverride(sid, { ...prev, ...patch })
+          const st = states.get(sid)
+          if (st) clearTimer(st)
+          logLine('session', { sid, enabled: patch.enabled })
+          return sendJson(res, 200, { ok: true })
+        })
+        .catch((error) => sendJson(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) }))
+      return
+    }
     if (req.method === 'GET' && path === '/log') {
       let content = ''
       try {
@@ -744,5 +828,5 @@ export function apply(ctx) {
     })
   } catch {}
 
-  logger('info', 'loaded v0.1.0')
+  logger('info', 'loaded v' + VERSION)
 }

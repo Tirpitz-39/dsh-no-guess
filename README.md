@@ -2,6 +2,8 @@
 
 > 不明白就先问。用户那句话说不清楚时，模型不许猜着做。
 
+[![test](https://github.com/Tirpitz-39/dsh-ask-first/actions/workflows/test.yml/badge.svg)](https://github.com/Tirpitz-39/dsh-ask-first/actions/workflows/test.yml)
+
 ## 它做什么
 
 主触发是**思考链**：每次模型准备调工具时，扫它最近几条思考（reasoning）——一旦出现「我猜用户 / 不确定用户 / 不知道用户要」这类**指向用户意图的猜测**，就视为它自己在承认「在猜」，拦下要求先问。
@@ -26,6 +28,20 @@
 - 总开关关闭（设置页或输入框旁按钮）
 - `ask_user_question` / `todo_write` / `claim_*` / `wrapup_check` 本身
 
+## 配置项
+
+设置页（设置 → 先问）或 HTTP 接口 `POST /dsh-ask-first/config` 都可改；手改 `config.json` 也行，坏值会被夹回合法区间。
+
+| 配置项 | 默认 | 说明 |
+|---|---|---|
+| `enabled` | `true` | 总开关 |
+| `thinkingGate` | `true` | 主触发：思考链里的「猜」信号 |
+| `ruleGate` | `false` | 字面规则兜底，误伤较多 |
+| `modelGate` | `false` | 模型判断（未完善，花钱） |
+| `timeoutMinutes` | `10` | 被拦后多久没回复就按最小假设继续，1–120 |
+| `maxBlocksPerTurn` | `2` | 每轮最多拦几次，1–10 |
+| `vagueMaxLength` | `40` | 多短算「说不清」，10–200 |
+
 ## 超时
 
 被拦后用户 `timeoutMinutes`（默认 10）分钟没回，插件往会话里投递一条消息：按最小假设继续，并在回答开头写明假设。之后本轮不再拦。
@@ -49,15 +65,17 @@
 
 ## 数据
 
-都在 `$DSH_HOME/ask-first/`：
+都在 `DSH_HOME` 下的 `ask-first/`：宿主设置了 `DSH_HOME` 就用它，否则用 `~/.dsh/ask-first/`（与 DSH 官方的目录解析一致，Windows / macOS / Linux 通用）。
 
 | 文件 | 内容 |
 |---|---|
-| `config.json` | 开关、超时分钟、每轮最多拦几次、多短算说不清 |
+| `config.json` | 上面的配置项；写入是原子的（临时文件 + rename） |
 | `sessions.json` | 每会话的临时覆盖（预留） |
-| `ask-first.log` | 每次拦截/提问/超时的 JSONL 记录 |
+| `ask-first.log` | 每次拦截/提问/超时的 JSONL 记录，超过 2 MiB 自动轮转保留尾部一半（可用 `DSH_ASK_FIRST_LOG_MAX_BYTES` 调整上限） |
 
 ## 安装
+
+要求：DSH（带 `tools` 和 `webServer` 服务）、Node.js ≥ 18。
 
 ```bash
 git clone https://github.com/Tirpitz-39/dsh-ask-first
@@ -68,16 +86,26 @@ dsh plugin add file:./dsh-ask-first
 
 装完**重启 DSH**。设置 → 先问，或输入框旁的「先问」按钮。
 
-数据目录默认 `$DSH_HOME/ask-first/`；宿主没设 `DSH_HOME` 时兜底为 `E:\DSH`（本机路径，别的机器请显式设置 `DSH_HOME`）。
-
 ## 测试
 
 ```bash
+npm test                 # 四组一起跑
 node test/smoke.mjs      # 38 项：规则判定 / 拦截 / 放行 / 回执 / 子代理 / 机器轮次 / 思考链
 node test/edge-cases.mjs # 20 条边界样本矩阵
 node test/attack.mjs     # 10 条对抗样本（伪造前缀、拆词、硬抗次数、借道子代理…）
+node test/config.mjs     # 19 项：配置默认值/夹紧、原子写、日志轮转、跨平台数据目录
 ```
+
+测试不需要 DSH 运行时：假 `ctx` / 假 `agent`，`DSH_HOME` 指向临时目录。CI 在 ubuntu 和 windows 上跑 Node 18/20/22。
 
 对抗测试目前 **漏洞 0 / 10**：伪造 `[SCHEDULE REMINDER]` 前缀、思考换行拆词两个漏洞已修；伪造 `source` 属宿主生成、用户不可构造，标为低风险；「思考不暴露猜测就抓不到」是方案固有局限。
 
-假 ctx / 假 agent，不需要 DSH 运行时；24 项断言覆盖规则判定、拦截、放行、回执、子代理、开关。
+## 已知局限
+
+- 思考里不暴露猜测就抓不到（方案固有）
+- `modelGate` 只看单条消息，会偏严
+- 借道 `subagent` / `workflow` 时子代理内部不拦（设计如此：子代理内部本来就不该问人）
+
+## License
+
+MIT
