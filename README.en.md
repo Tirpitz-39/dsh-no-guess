@@ -110,7 +110,7 @@ npm test                 # all five suites
 node test/smoke.mjs      # 44 checks: rules / blocking / passthrough / receipts / subagents / machine turns / cross-turn / thinking chain / privacy
 node test/edge-cases.mjs # 20 edge samples
 node test/attack.mjs     # 15 adversarial samples (forged prefixes, split phrases, hard resistance, subagent bypass…)
-node test/config.mjs     # 23 checks: defaults/clamping, atomic writes, log rotation, cross-platform data dir, cache
+node test/config.mjs     # 25 checks: defaults/clamping, atomic writes, log rotation, cross-platform data dir, rapid write/read
 node test/replay.mjs     # real-session replay: thinking-gate arm rate (fixture 25%, red line 50%)
 ```
 

@@ -41,15 +41,31 @@ check('default: ruleGate off', def.ruleGate === false)
 check('default: modelGate off', def.modelGate === false)
 check('default: logUserText off (privacy)', def.logUserText === false)
 
-// ---------------- cache ----------------
+// ---------------- read-back (no stale cache) ----------------
 
-const beforeCache = readConfig()
-beforeCache.enabled = false
-check('readConfig returns a copy (cache not mutable)', readConfig().enabled === true)
-const writtenCache = writeConfig({ logUserText: true })
-check('writeConfig applies logUserText', writtenCache.logUserText === true)
-check('cache is invalidated after writeConfig', readConfig().logUserText === true)
+const before = readConfig()
+before.enabled = false
+check('readConfig returns a fresh object (not a shared cache)', readConfig().enabled === true)
+const writtenConfig = writeConfig({ logUserText: true })
+check('writeConfig applies logUserText', writtenConfig.logUserText === true)
+check('writeConfig round-trips through readConfig', readConfig().logUserText === true)
 writeConfig({ logUserText: false })
+
+// Rapid hand-edits inside one filesystem mtime tick must each be read back. An
+// mtime-only cache used to serve the previous value on 4ms-resolution
+// filesystems, which made this suite flaky.
+writeFileSync(configFile, JSON.stringify({ timeoutMinutes: 30 }), 'utf8')
+const rapidA = readConfig().timeoutMinutes
+writeFileSync(configFile, JSON.stringify({ timeoutMinutes: 90 }), 'utf8')
+const rapidB = readConfig().timeoutMinutes
+check('rapid writes are read back, not cached', rapidA === 30 && rapidB === 90, `${rapidA}/${rapidB}`)
+
+// A broken config followed by a good write must not leave the defaults behind.
+writeFileSync(configFile, '{not json', 'utf8')
+const brokenNow = readConfig().timeoutMinutes
+writeFileSync(configFile, JSON.stringify({ timeoutMinutes: 45 }), 'utf8')
+const afterBroken = readConfig().timeoutMinutes
+check('bad JSON then a good write is read back', brokenNow === 10 && afterBroken === 45, `${brokenNow}/${afterBroken}`)
 
 // ---------------- broken / hand-edited config ----------------
 

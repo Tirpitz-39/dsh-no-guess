@@ -129,17 +129,10 @@ function ensureDir() {
   } catch {}
 }
 
-/** Cache keyed on file mtime: the guard calls readConfig on every tool call. */
-const configCache = { mtimeMs: -1, value: null }
-const sessionsCache = { mtimeMs: -1, value: null }
-
 export function readConfig() {
   let raw = null
   try {
-    const stat = statSync(configPath())
-    if (configCache.value !== null && stat.mtimeMs === configCache.mtimeMs) return { ...configCache.value }
     raw = JSON.parse(readFileSync(configPath(), 'utf8'))
-    configCache.mtimeMs = stat.mtimeMs
   } catch {
     raw = null
   }
@@ -153,8 +146,7 @@ export function readConfig() {
   for (const key of Object.keys(LIMITS)) {
     if (src[key] !== undefined) cfg[key] = clampNumber(src[key], LIMITS[key])
   }
-  configCache.value = cfg
-  return { ...cfg }
+  return cfg
 }
 
 /** Atomic write: a crash mid-write must not leave a truncated config file. */
@@ -191,8 +183,6 @@ export function writeConfig(patch) {
   }
   try {
     writeFileAtomic(configPath(), JSON.stringify(next, null, 2))
-    // The next read must re-stat even if the mtime has the same millisecond.
-    configCache.value = null
   } catch {}
   return next
 }
@@ -200,13 +190,8 @@ export function writeConfig(patch) {
 // Session-level overrides survive restarts: { [sid]: { enabled: boolean } }.
 export function readSessionOverrides() {
   try {
-    const stat = statSync(sessionsPath())
-    if (sessionsCache.value !== null && stat.mtimeMs === sessionsCache.mtimeMs) return { ...sessionsCache.value }
     const raw = JSON.parse(readFileSync(sessionsPath(), 'utf8'))
-    const value = raw && typeof raw === 'object' ? raw : {}
-    sessionsCache.mtimeMs = stat.mtimeMs
-    sessionsCache.value = value
-    return { ...value }
+    return raw && typeof raw === 'object' ? raw : {}
   } catch {
     return {}
   }
@@ -224,7 +209,6 @@ export function writeSessionOverride(sid, patch) {
   }
   try {
     writeFileSync(sessionsPath(), JSON.stringify(all), 'utf8')
-    sessionsCache.value = null
   } catch {}
   return all[sid]
 }

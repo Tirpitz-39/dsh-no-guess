@@ -110,7 +110,7 @@ npm test                 # 五组一起跑
 node test/smoke.mjs      # 44 项：规则判定 / 拦截 / 放行 / 回执 / 子代理 / 机器轮次 / 跨轮 / 思考链 / 隐私
 node test/edge-cases.mjs # 20 条边界样本矩阵
 node test/attack.mjs     # 15 条对抗样本（伪造前缀、拆词、硬抗次数、借道子代理…）
-node test/config.mjs     # 23 项：配置默认值/夹紧、原子写、日志轮转、跨平台数据目录、缓存
+node test/config.mjs     # 25 项：配置默认值/夹紧、原子写、日志轮转、跨平台数据目录、连续写读
 node test/replay.mjs     # 真实会话回放：统计思考链武装率（fixture 25%，红线 50%）
 ```
 
