@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0
+
+- **改名 `dsh-no-guess`**（原 `dsh-ask-first`）：npm 上 `dsh-ask-first` 已被 baiye0303 占用，GitHub 上还有 4 个同名实现，改名避免撞名
+- 插件 id、HTTP 路由 `/dsh-no-guess`、来源标记、日志前缀、设置页 slot id 全部跟着改
+- **数据目录沿用 `$DSH_HOME/ask-first/` 不变**——已有配置不丢（这是历史名字，只影响实现细节）
+- 本地目录与 GitHub 仓库同步改名为 `dsh-no-guess`
+
 ## 0.3.1
 
 - 修复：`not sure what you mean` 之前只有在同时出现 `I guess that` 时才生效——补上漏掉的 `notsurewhatyoumean` / `unsurewhatyoumean` / `dontknowwhatyoumean`，A12 改为单独测试该短语（探针 9/9 通过）

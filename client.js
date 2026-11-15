@@ -1,6 +1,6 @@
 /* global window, fetch */
 /**
- * 先问 / dsh-ask-first — 浏览器半侧。
+ * 先问 / dsh-no-guess — 浏览器半侧。
  *
  * 1) conversation.input.left：输入框旁的「先问」开关（全局）
  * 2) settings.section：完整设置（开关 / 超时 / 每轮最多拦几次）
@@ -8,11 +8,11 @@
  * Host 半负责拦截；这里只负责把开关摆出来。
  */
 window.__ModuleLoader__.load({
-  id: 'dsh-ask-first',
+  id: 'dsh-no-guess',
   factory(require) {
     const React = require('react')
     const h = React.createElement
-    const API = '/dsh-ask-first'
+    const API = '/dsh-no-guess'
 
     const tokens = {
       text: 'var(--dsw-alias-label-primary, currentColor)',
@@ -354,13 +354,13 @@ window.__ModuleLoader__.load({
       apply(ctx) {
         ctx.slots.inject('conversation.input.left', () =>
           ctx.slots.register(
-            { name: 'conversation.input.left', id: 'dsh-ask-first-quick', order: 14, inject: () => ({}) },
+            { name: 'conversation.input.left', id: 'dsh-no-guess-quick', order: 14, inject: () => ({}) },
             Quick,
           ),
         )
         ctx.slots.inject('settings.section', () =>
           ctx.slots.register(
-            { name: 'settings.section', id: 'dsh-ask-first', order: 62, label: () => '先问', inject: () => ({}) },
+            { name: 'settings.section', id: 'dsh-no-guess', order: 62, label: () => '先问', inject: () => ({}) },
             SettingsPage,
           ),
         )

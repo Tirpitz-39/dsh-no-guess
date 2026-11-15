@@ -1,5 +1,5 @@
-# dsh-ask-first 的 bundle patch：把插件挂进本 profile 的配置树。
+# dsh-no-guess 的 bundle patch：把插件挂进本 profile 的配置树。
 # 行 id 即设置命名空间，不要改动。
 - insert:
-    - id: dsh-ask-first
-      name: 'dsh-ask-first'
+    - id: dsh-no-guess
+      name: 'dsh-no-guess'

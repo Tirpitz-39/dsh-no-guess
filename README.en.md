@@ -1,10 +1,10 @@
-# dsh-ask-first · Ask First
+# dsh-no-guess · Ask First
 
 > Don't guess. When the request is unclear, ask before acting.
 
 [中文](README.md) | **English**
 
-[![test](https://github.com/Tirpitz-39/dsh-ask-first/actions/workflows/test.yml/badge.svg)](https://github.com/Tirpitz-39/dsh-ask-first/actions/workflows/test.yml)
+[![test](https://github.com/Tirpitz-39/dsh-no-guess/actions/workflows/test.yml/badge.svg)](https://github.com/Tirpitz-39/dsh-no-guess/actions/workflows/test.yml)
 
 ## What it does
 
@@ -32,7 +32,7 @@ How reasoning is read: DSH keeps the full thinking text in `reasoning` blocks of
 
 ## Configuration
 
-Change it on the settings page (Settings → Ask First) or via `POST /dsh-ask-first/config`. Hand-editing `config.json` also works; bad values are clamped back into range.
+Change it on the settings page (Settings → Ask First) or via `POST /dsh-no-guess/config`. Hand-editing `config.json` also works; bad values are clamped back into range.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -72,7 +72,7 @@ Matching is case-insensitive and whitespace-insensitive (a phrase split across l
 
 ## Data
 
-Everything lives under `DSH_HOME/ask-first/`. If the host does not set `DSH_HOME`, the fallback is `~/.dsh/ask-first/` (same resolution order as DSH itself; works on Windows, macOS and Linux).
+Everything lives under `DSH_HOME/ask-first/`. If the host does not set `DSH_HOME`, the fallback is `~/.dsh/ask-first/` (same resolution order as DSH itself; works on Windows, macOS and Linux). The directory keeps its pre-rename name `ask-first`; that is an implementation detail and does not affect the plugin name.
 
 | File | Contents |
 |---|---|
@@ -85,8 +85,8 @@ Everything lives under `DSH_HOME/ask-first/`. If the host does not set `DSH_HOME
 Requirements: DSH (with the `tools` and `webServer` services) and Node.js ≥ 18.
 
 ```bash
-git clone https://github.com/Tirpitz-39/dsh-ask-first
-dsh plugin add file:./dsh-ask-first
+git clone https://github.com/Tirpitz-39/dsh-no-guess
+dsh plugin add file:./dsh-no-guess
 ```
 
 For local development you can point it at your working copy instead: `dsh plugin add file:<plugin-dir>`.

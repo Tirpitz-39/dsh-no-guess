@@ -1,10 +1,10 @@
-# dsh-ask-first · 先问
+# dsh-no-guess · 先问
 
 > 不明白就先问。用户那句话说不清楚时，模型不许猜着做。
 
 [English](README.en.md) | **中文**
 
-[![test](https://github.com/Tirpitz-39/dsh-ask-first/actions/workflows/test.yml/badge.svg)](https://github.com/Tirpitz-39/dsh-ask-first/actions/workflows/test.yml)
+[![test](https://github.com/Tirpitz-39/dsh-no-guess/actions/workflows/test.yml/badge.svg)](https://github.com/Tirpitz-39/dsh-no-guess/actions/workflows/test.yml)
 
 ## 它做什么
 
@@ -32,7 +32,7 @@
 
 ## 配置项
 
-设置页（设置 → 先问）或 HTTP 接口 `POST /dsh-ask-first/config` 都可改；手改 `config.json` 也行，坏值会被夹回合法区间。
+设置页（设置 → 先问）或 HTTP 接口 `POST /dsh-no-guess/config` 都可改；手改 `config.json` 也行，坏值会被夹回合法区间。
 
 | 配置项 | 默认 | 说明 |
 |---|---|---|
@@ -72,7 +72,7 @@
 
 ## 数据
 
-都在 `DSH_HOME` 下的 `ask-first/`：宿主设置了 `DSH_HOME` 就用它，否则用 `~/.dsh/ask-first/`（与 DSH 官方的目录解析一致，Windows / macOS / Linux 通用）。
+都在 `DSH_HOME` 下的 `ask-first/`：宿主设置了 `DSH_HOME` 就用它，否则用 `~/.dsh/ask-first/`（与 DSH 官方的目录解析一致，Windows / macOS / Linux 通用）。目录名沿用改名前的 `ask-first`，只影响实现细节，不影响插件名。
 
 | 文件 | 内容 |
 |---|---|
@@ -85,8 +85,8 @@
 要求：DSH（带 `tools` 和 `webServer` 服务）、Node.js ≥ 18。
 
 ```bash
-git clone https://github.com/Tirpitz-39/dsh-ask-first
-dsh plugin add file:./dsh-ask-first
+git clone https://github.com/Tirpitz-39/dsh-no-guess
+dsh plugin add file:./dsh-no-guess
 ```
 
 本地开发时也可以直接指向自己的目录（`dsh plugin add file:<插件目录>`）。

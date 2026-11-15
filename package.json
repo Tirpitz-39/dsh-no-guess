@@ -1,6 +1,6 @@
 {
-  "name": "dsh-ask-first",
-  "version": "0.3.1",
+  "name": "dsh-no-guess",
+  "version": "0.4.0",
   "type": "module",
   "description": "DSH 插件：需求不清楚时先问再干 — block tool calls on unclear requests, ask before guessing",
   "exports": {
@@ -49,11 +49,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Tirpitz-39/dsh-ask-first.git"
+    "url": "git+https://github.com/Tirpitz-39/dsh-no-guess.git"
   },
-  "homepage": "https://github.com/Tirpitz-39/dsh-ask-first#readme",
+  "homepage": "https://github.com/Tirpitz-39/dsh-no-guess#readme",
   "bugs": {
-    "url": "https://github.com/Tirpitz-39/dsh-ask-first/issues"
+    "url": "https://github.com/Tirpitz-39/dsh-no-guess/issues"
   },
   "publishConfig": {
     "access": "public"

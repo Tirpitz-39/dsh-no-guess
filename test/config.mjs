@@ -1,4 +1,4 @@
-// dsh-ask-first config & robustness tests.
+// dsh-no-guess config & robustness tests.
 //
 //   node test/config.mjs
 //

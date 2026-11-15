@@ -1,4 +1,4 @@
-// dsh-ask-first - 不明白就先问：用户那句话不清楚时，拦截工具调用，强制先问。
+// dsh-no-guess - 不明白就先问：用户那句话不清楚时，拦截工具调用，强制先问。
 //
 // Host half. ZERO model calls: the "vague" decision is a rule, not an LLM.
 //   - agent/pre-step  记录本轮最后一条用户消息（真人会话才挂）
@@ -13,10 +13,10 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 
-export const name = 'dsh-ask-first'
+export const name = 'dsh-no-guess'
 export const inject = ['tools']
 
-const ROUTE_PREFIX = '/dsh-ask-first'
+const ROUTE_PREFIX = '/dsh-no-guess'
 
 /** Plugin version, read from package.json next to this file (best effort). */
 const VERSION = (() => {
@@ -85,14 +85,14 @@ const VERB_RE =
   /(做|弄|改|写|看|说|搞|处理|设置|换|切|删|加|找|查|跑|运行|装|卸|开|关|继续|生成|整理|导出|安装|修复|优化|部署|提交|合并|测试|执行|搜索|下载|上传)/
 
 const ASK_TEXT =
-  '[dsh-ask-first] 先别动手。在问清楚「用户到底要干什么、要怎么干」之前，不许猜。' +
+  '[dsh-no-guess] 先别动手。在问清楚「用户到底要干什么、要怎么干」之前，不许猜。' +
   '先用 ask_user_question 问清这两件事（1-3 条问题，每条给 2-4 个从用户原话推出来的具体选项）：' +
   '① 要干什么：目标是什么、最后要什么交付物、范围到哪（明确不做什么）；' +
   '② 要怎么干：用什么方式/工具/约束、什么算做好（验收标准）。' +
   '问完这一轮就停住等回答，不要在同一个回合里继续调用工具。'
 
 const STOP_TEXT =
-  '[dsh-ask-first] 你这一轮已经问过用户了，问完就该停住等回答。' +
+  '[dsh-no-guess] 你这一轮已经问过用户了，问完就该停住等回答。' +
   '不要在同一个回合里先问再自己猜着继续——那等于没问。'
 
 // ------------------------------------------------------------------ paths
@@ -404,12 +404,12 @@ function armTimeout(agent, sid, st, cfg) {
             {
               type: 'text',
               text:
-                '[dsh-ask-first] 用户超过 ' +
+                '[dsh-no-guess] 用户超过 ' +
                 Math.max(1, Number(cfg.timeoutMinutes) || DEFAULTS.timeoutMinutes) +
                 ' 分钟没有回复你的提问。按最小假设继续，并在回答开头用一句话写明你假定了什么。',
             },
           ],
-          source: { kind: 'dsh-ask-first' },
+          source: { kind: 'dsh-no-guess' },
         }),
       ).catch(() => {})
     } catch {}
@@ -612,7 +612,7 @@ export function apply(ctx) {
   const logger = (level, message) => {
     try {
       const sink = ctx.logger && ctx.logger[level]
-      if (typeof sink === 'function') sink.call(ctx.logger, 'dsh-ask-first: ' + message)
+      if (typeof sink === 'function') sink.call(ctx.logger, 'dsh-no-guess: ' + message)
     } catch {}
   }
 
@@ -656,7 +656,7 @@ export function apply(ctx) {
         if (agents.get(sid) === agent) agents.delete(sid)
         const st = states.get(sid)
         if (st) clearTimer(st)
-      }, 'dsh-ask-first: pre-step ' + sid)
+      }, 'dsh-no-guess: pre-step ' + sid)
     } catch (error) {
       logger('warn', 'attach failed: ' + (error instanceof Error ? error.message : String(error)))
     }
@@ -798,7 +798,7 @@ export function apply(ctx) {
         offGuard && offGuard()
       } catch {}
     }
-  }, 'dsh-ask-first: guard')
+  }, 'dsh-no-guess: guard')
 
   ctx.effect(() => {
     const off = ctx.on('agent/created', (payload) => {
@@ -811,7 +811,7 @@ export function apply(ctx) {
         off && off()
       } catch {}
     }
-  }, 'dsh-ask-first: agent hooks')
+  }, 'dsh-no-guess: agent hooks')
 
   try {
     ctx.inject(['webServer'], (child) => {
@@ -827,7 +827,7 @@ export function apply(ctx) {
               off && off()
             } catch {}
           }
-        }, 'dsh-ask-first: http route')
+        }, 'dsh-no-guess: http route')
       } catch {}
     })
   } catch {}

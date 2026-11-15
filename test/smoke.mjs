@@ -1,4 +1,4 @@
-// dsh-ask-first smoke test. Runs without the DSH runtime: fake ctx/agent,
+// dsh-no-guess smoke test. Runs without the DSH runtime: fake ctx/agent,
 // temp DSH_HOME, no web server.
 //
 //   node test/smoke.mjs
