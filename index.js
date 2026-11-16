@@ -584,7 +584,13 @@ function getState(states, sid) {
           oldestKey = key
         }
       }
-      if (oldestKey) states.delete(oldestKey)
+      if (oldestKey) {
+        // Release any pending timeout before dropping the entry: the timer
+        // callback still holds the state object.
+        const victim = states.get(oldestKey)
+        if (victim) clearTimer(victim)
+        states.delete(oldestKey)
+      }
     }
     st = {
       armed: false,
