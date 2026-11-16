@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.7
+
+- **热路径修复**：数据迁移检查（`migrateLegacyData`）原本在 `readConfig` 的缓存命中之前执行，每个工具调用都会多做几次 `existsSync`/`readdir`。现在只在配置缓存未命中时跑，1 秒内最多一次
+- 行为无变化，仅减少守卫路径的系统调用
+
 ## 0.4.6
 
 - **日志契约扩展**：`guess-arm` 记录 `family`（命中的词族），`block-ask` / `block-stop` 记录 `signal`（thinking/rule/model）与 `turn`，`asked` / `answered` 记录 `latencyMs` 与 `turn`。旧日志缺字段时分析工具按「未知」处理，不报假数字

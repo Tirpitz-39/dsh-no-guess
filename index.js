@@ -180,9 +180,11 @@ export function resetConfigCache() {
 }
 
 export function readConfig() {
-  migrateLegacyData()
   const now = Date.now()
   if (configCache !== null && now - configCache.at < CACHE_TTL_MS) return { ...configCache.value }
+  // Migration check runs on the cache miss only: the guard path calls
+  // readConfig on every tool call, and the legacy scan does several syscalls.
+  migrateLegacyData()
   let raw = null
   try {
     raw = JSON.parse(readFileSync(configPath(), 'utf8'))
