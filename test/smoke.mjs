@@ -95,16 +95,19 @@ function makeCtx() {
 
 function makeAgent(sid, header) {
   const preStep = []
+  const toolResult = []
   return {
     id: sid,
     session: { id: sid, header: header || {}, eventsSnapshot: [] },
     ctx: {
       on(event, fn) {
         if (event === 'agent/pre-step') preStep.push(fn)
+        if (event === 'tools/result') toolResult.push(fn)
         return () => {}
       },
     },
     preStep,
+    toolResult,
     followup: async () => {},
   }
 }
@@ -322,6 +325,50 @@ const logOptIn = readFileSync(LOG_FILE, 'utf8')
 check('privacy: logUserText=true records the text', logOptIn.includes('那个怎么样'), 'text not logged')
 agent.session.eventsSnapshot = []
 writeConfig({ logUserText: false })
+
+// log contract: the guard records WHICH gate armed the turn (signal), which
+// family matched (family), the turn number, and block/ask/answer latency.
+// These fields are what tools/analyze-log.mjs reads; without them the log can
+// only be eyeballed.
+{
+  writeConfig({ enabled: true, ruleGate: false, logUserText: false })
+  await runPreStep(agent, '那个怎么样', 200)
+  agent.session.eventsSnapshot = [
+    {
+      type: 'assistant/message',
+      data: { turn: 200, message: { content: [{ type: 'reasoning', text: '我猜用户是想问模式的区别' }] } },
+    },
+  ]
+  const offset = readFileSync(LOG_FILE, 'utf8').length
+  const blockedByGuess = await runTool('pwsh', agent)
+  await runTool('ask_user_question', agent)
+  if (agent.toolResult.length > 0) agent.toolResult[0]({ name: 'ask_user_question' })
+  agent.session.eventsSnapshot = []
+  check('log contract: guess block actually happened', blockedByGuess && blockedByGuess.kind === 'deny')
+  const fresh = readFileSync(LOG_FILE, 'utf8')
+    .slice(offset)
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line))
+  const guessArm = fresh.find((line) => line.event === 'guess-arm')
+  check('log contract: guess-arm records family', guessArm && guessArm.family === 'zh-intent', JSON.stringify(guessArm))
+  check('log contract: guess-arm records signal', guessArm && guessArm.signal === 'thinking', JSON.stringify(guessArm))
+  check('log contract: guess-arm records turn', guessArm && guessArm.turn === 200, JSON.stringify(guessArm))
+  const blockEvt = fresh.find((line) => line.event === 'block-ask')
+  check(
+    'log contract: block-ask records signal + turn',
+    blockEvt && blockEvt.signal === 'thinking' && blockEvt.turn === 200,
+    JSON.stringify(blockEvt),
+  )
+  const askedEvt = fresh.find((line) => line.event === 'asked')
+  check('log contract: asked records latency', askedEvt && typeof askedEvt.latencyMs === 'number', JSON.stringify(askedEvt))
+  const answeredEvt = fresh.find((line) => line.event === 'answered')
+  check(
+    'log contract: answered records turn + latency',
+    answeredEvt && answeredEvt.turn === 200 && typeof answeredEvt.latencyMs === 'number',
+    JSON.stringify(answeredEvt),
+  )
+}
 
 // replay: the regression script groups by turn and only counts human turns
 {

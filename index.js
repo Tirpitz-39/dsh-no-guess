@@ -315,8 +315,50 @@ export function isAck(text) {
 // purpose (user opted into more blocks over fewer).
 // Matching happens AFTER whitespace is stripped, so English patterns are
 // written without spaces ("I guess the user" -> "iguesstheuser").
-export const GUESS_RE =
-  /(我猜用户|猜用户想|不确定用户(?:想|要|需要|偏好|指|是|的意图)|不清楚用户(?:想|要|需要|偏好|指|是)|不知道用户要|用户可能是想|用户大概是想要|用户要的应该是|iguesstheuser|imguessingtheuser|guessingwhattheuser|iguessthat|iguessthis|iguessthey|iguessit|iguessits|notsurewhattheuser|unsurewhattheuser|notsurewhatyoumean|unsurewhatyoumean|dontknowwhattheuser|dontknowwhatyouwant|dontknowwhatyoumean|canttellwhattheuser|canttellwhatyoumean|theuserprobablywants|userprobablywants|theuserlikelywants|userlikelywants|theusermightwant|maybetheuserwants|perhapstheuser|assumingtheuser|ithinktheuser|ibelievetheuser|ithinkyouwant|ithinkyoumean)/i
+//
+// Families: the log records WHICH family fired (`family` field). Word-family
+// analytics is what lets a later release narrow one family without touching
+// the rest — patching the whole regex blind is how you lose recall.
+const GUESS_FAMILIES = [
+  {
+    id: 'zh-intent',
+    re: /我猜用户|猜用户想|不确定用户(?:想|要|需要|偏好|指|是|的意图)|不清楚用户(?:想|要|需要|偏好|指|是)|不知道用户要|用户可能是想|用户大概是想要|用户要的应该是/i,
+  },
+  {
+    id: 'en-intent',
+    re: /iguesstheuser|imguessingtheuser|guessingwhattheuser|notsurewhattheuser|unsurewhattheuser|dontknowwhattheuser|dontknowwhatyouwant|theuserprobablywants|userprobablywants|theuserlikelywants|userlikelywants|theusermightwant|maybetheuserwants|perhapstheuser|assumingtheuser|ithinktheuser|ibelievetheuser|ithinkyouwant|ithinkyoumean/i,
+  },
+  {
+    id: 'en-think',
+    re: /iguessthat|iguessthis|iguessthey|iguessit|iguessits|notsurewhatyoumean|unsurewhatyoumean|dontknowwhatyoumean|canttellwhattheuser|canttellwhatyoumean/i,
+  },
+]
+
+/** Export for tests and tooling; the guard and the log use matchGuessFamily. */
+export { GUESS_FAMILIES }
+
+/**
+ * Which family (if any) does this reasoning text match? Matching strips all
+ * whitespace first, so a newline inside a phrase cannot split it.
+ *
+ * @param {string} text
+ * @returns {{ id: string } | null}
+ */
+export function matchGuessFamily(text) {
+  const compact = String(text ?? '').replace(/\s+/g, '')
+  if (!compact) return null
+  for (const family of GUESS_FAMILIES) {
+    if (family.re.test(compact)) return { id: family.id }
+  }
+  return null
+}
+
+// Merged regex, kept for replay.mjs and existing tests. Same semantics as
+// matchGuessFamily: any family matching means the turn arms.
+export const GUESS_RE = new RegExp(
+  GUESS_FAMILIES.map((family) => '(?:' + family.re.source + ')').join('|'),
+  'i',
+)
 
 // The plugin's own name in the user's message marks a turn that is about this
 // plugin: its README and this very code quote the guess phrases, so scanning
@@ -447,6 +489,9 @@ function getState(states, sid) {
   if (!st) {
     st = {
       armed: false,
+      // Which gate armed the turn: 'thinking' | 'rule' | 'model'. Logged as
+      // `signal` so the analyzer can attribute blocks to the right gate.
+      armedSignal: '',
       askedThisTurn: false,
       blocksThisTurn: 0,
       blockedAt: 0,
@@ -477,7 +522,7 @@ function armTimeout(agent, sid, st, cfg) {
       if (st.askedThisTurn) return
       if (Date.now() - st.lastUserAt < ms) return
       st.armed = false
-      logLine('timeout', { sid })
+      logLine('timeout', { sid, turn: st.lastTurn })
       const followup = agent && typeof agent.followup === 'function' ? agent.followup : null
       if (!followup) return
       Promise.resolve(
@@ -738,10 +783,11 @@ export function apply(ctx) {
           if (toolName !== 'ask_user_question') return
           const st = states.get(sid)
           if (!st) return
+          const latencyMs = st.blockedAt ? Date.now() - st.blockedAt : 0
           st.armed = false
           st.blockedAt = 0
           clearTimer(st)
-          logLine('answered', { sid })
+          logLine('answered', { sid, turn: st.lastTurn, latencyMs })
         } catch {}
       })
       ctx.effect(() => () => {
@@ -770,6 +816,7 @@ export function apply(ctx) {
       const machine = getState(states, sid)
       machine.lastText = ''
       machine.armed = false
+      machine.armedSignal = ''
       machine.askedThisTurn = false
       machine.blocksThisTurn = 0
       machine.blockedAt = 0
@@ -781,6 +828,7 @@ export function apply(ctx) {
     st.lastText = text
     st.lastTurn = Number(p.turn) || 0
     st.lastUserAt = Date.now()
+    st.armedSignal = ''
     st.askedThisTurn = false
     st.blocksThisTurn = 0
     st.blockedAt = 0
@@ -794,6 +842,7 @@ export function apply(ctx) {
       return
     }
     st.armed = cfg.ruleGate === true ? looksVague(text, cfg.vagueMaxLength) : false
+    if (st.armed) st.armedSignal = 'rule'
     // Optional paid gate: a model judges whether the request is missing
     // context or self-contradictory. Off by default; fail-open on any error.
     if (!st.armed && cfg.modelGate === true) {
@@ -801,11 +850,12 @@ export function apply(ctx) {
         const need = await judgeByModel(ctx, text)
         if (need === true) {
           st.armed = true
-          logLine('model-arm', { sid, text: maybeText(cfg, text) })
+          st.armedSignal = 'model'
+          logLine('model-arm', { sid, signal: 'model', turn: st.lastTurn, text: maybeText(cfg, text) })
         }
       } catch {}
     }
-    if (st.armed) logLine('arm', { sid, turn: st.lastTurn, text: maybeText(cfg, text) })
+    if (st.armed) logLine('arm', { sid, signal: st.armedSignal, turn: st.lastTurn, text: maybeText(cfg, text) })
   }
 
   // Global guard: block the first tool call while the request is still vague.
@@ -833,9 +883,11 @@ export function apply(ctx) {
       const tool = String((exec && exec.name) || '')
       if (tool === 'ask_user_question') {
         st.askedThisTurn = true
-        st.blockedAt = 0
+        const latencyMs = st.blockedAt ? Date.now() - st.blockedAt : 0
         clearTimer(st)
-        logLine('asked', { sid })
+        // blockedAt stays set: `answered` (tools/result) uses it to measure the
+        // full block -> answer latency, then clears it.
+        logLine('asked', { sid, turn: st.lastTurn, latencyMs })
         return next()
       }
       if (ALWAYS_ALLOW.has(tool)) return next()
@@ -843,7 +895,8 @@ export function apply(ctx) {
       if (!st.armed && cfg.ruleGate === true && st.lastText) {
         if (looksVague(st.lastText, cfg.vagueMaxLength)) {
           st.armed = true
-          logLine('rule-arm', { sid, text: maybeText(cfg, st.lastText) })
+          st.armedSignal = 'rule'
+          logLine('rule-arm', { sid, signal: 'rule', turn: st.lastTurn, text: maybeText(cfg, st.lastText) })
         }
       }
       // Primary gate: the model's own reasoning admits it is guessing intent.
@@ -854,11 +907,14 @@ export function apply(ctx) {
       const selfDiscuss = SELF_DISCUSS_RE.test(st.lastText)
       if (!st.armed && !selfDiscuss && cfg.thinkingGate !== false && st.blocksThisTurn === 0 && st.lastText) {
         const guess = extractGuessText(session, st.lastTurn)
-        // Strip whitespace before matching so a newline cannot split the phrase
-        // (adversarial check A5).
-        if (guess && GUESS_RE.test(guess.replace(/\s+/g, ''))) {
+        // Strips whitespace before matching so a newline cannot split the
+        // phrase (adversarial check A5); matchGuessFamily returns the family
+        // id so the log can attribute the block.
+        const hit = guess ? matchGuessFamily(guess) : null
+        if (hit) {
           st.armed = true
-          logLine('guess-arm', { sid, head: maybeText(cfg, guess, 140) })
+          st.armedSignal = 'thinking'
+          logLine('guess-arm', { sid, family: hit.id, signal: 'thinking', turn: st.lastTurn, head: maybeText(cfg, guess, 140) })
         }
       }
       if (!st.armed) return next()
@@ -866,7 +922,7 @@ export function apply(ctx) {
       // Timeout grace: the user is not coming back; let it through.
       if (st.blockedAt && Date.now() - st.blockedAt > Math.max(1, cfg.timeoutMinutes) * 60_000) {
         st.armed = false
-        logLine('timeout-release', { sid, tool })
+        logLine('timeout-release', { sid, tool, turn: st.lastTurn })
         return next()
       }
 
@@ -874,7 +930,7 @@ export function apply(ctx) {
         if (st.blocksThisTurn >= cfg.maxBlocksPerTurn) return next()
         st.blocksThisTurn += 1
         st.blockedAt = Date.now()
-        logLine('block-stop', { sid, tool })
+        logLine('block-stop', { sid, tool, turn: st.lastTurn })
         return { kind: 'deny', reason: STOP_TEXT }
       }
 
@@ -882,7 +938,7 @@ export function apply(ctx) {
       st.blocksThisTurn += 1
       st.blockedAt = Date.now()
       armTimeout(exec.agent, sid, st, cfg)
-      logLine('block-ask', { sid, tool, text: maybeText(cfg, st.lastText) })
+      logLine('block-ask', { sid, tool, signal: st.armedSignal || 'unknown', turn: st.lastTurn, text: maybeText(cfg, st.lastText) })
       return {
         kind: 'deny',
         reason: ASK_TEXT + '\n\n你用户刚才那句：' + st.lastText.slice(0, 160),

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **日志契约扩展**：`guess-arm` 记录 `family`（命中的词族），`block-ask` / `block-stop` 记录 `signal`（thinking/rule/model）与 `turn`，`asked` / `answered` 记录 `latencyMs` 与 `turn`。旧日志缺字段时分析工具按「未知」处理，不报假数字
+- **词族分类**：`GUESS_RE` 拆成 `zh-intent` / `en-intent` / `en-think` 三个词族，新增 `matchGuessFamily()`；合并正则 `GUESS_RE` 保留，行为不变（replay 武装率仍是 25%）
+- **日志分析工具** `tools/analyze-log.mjs`：统计武装 / 拦截 / 回答 / 超时，按词族与信号分组，平均回答耗时，<60s 快速回答候选；`answered` 只有在同会话同 turn 被拦过时才计入回答率，旧日志显示 n/a 而不是虚数
+- 测试：smoke 56（+7 日志契约）、analyze-log 21（新增）
+
 ## 0.4.5
 
 按代码评审修四处：

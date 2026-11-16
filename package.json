@@ -41,11 +41,11 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "test": "node test/smoke.mjs && node test/edge-cases.mjs && node test/attack.mjs && node test/config.mjs && node test/replay.mjs",
+    "test": "node test/smoke.mjs && node test/edge-cases.mjs && node test/attack.mjs && node test/config.mjs && node test/replay.mjs && node test/analyze-log.mjs",
     "test:smoke": "node test/smoke.mjs",
     "test:edge": "node test/edge-cases.mjs",
     "test:attack": "node test/attack.mjs",
-    "prepublishOnly": "node test/smoke.mjs && node test/edge-cases.mjs && node test/attack.mjs && node test/config.mjs"
+    "prepublishOnly": "node test/smoke.mjs && node test/edge-cases.mjs && node test/attack.mjs && node test/config.mjs && node test/analyze-log.mjs"
   },
   "repository": {
     "type": "git",
