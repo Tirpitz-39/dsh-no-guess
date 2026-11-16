@@ -1,6 +1,6 @@
 {
   "name": "dsh-no-guess",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "type": "module",
   "description": "DSH 插件：需求不清楚时先问再干 — block tool calls on unclear requests, ask before guessing",
   "exports": {
@@ -13,7 +13,8 @@
     "client.js",
     "cordis.patch.yml",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "tools/"
   ],
   "dsh": {
     "bundle": {

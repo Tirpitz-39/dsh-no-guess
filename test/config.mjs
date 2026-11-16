@@ -139,11 +139,30 @@ check('log tail is still a complete JSONL line', tailOk, tail.slice(0, 80))
 const legacyDir = join(process.env.DSH_HOME, 'ask-first')
 mkdirSync(legacyDir, { recursive: true })
 writeFileSync(join(legacyDir, 'config.json'), JSON.stringify({ timeoutMinutes: 7 }), 'utf8')
+writeFileSync(join(legacyDir, 'ask-first.log'), '{"event":"legacy","i":1}\n', 'utf8')
 rmSync(dir, { recursive: true, force: true })
 resetConfigCache()
 const migrated = readConfig()
 check('legacy ask-first config migrates to no-guess', migrated.timeoutMinutes === 7, migrated.timeoutMinutes)
 check('new data dir exists after migration', existsSync(dir))
+check(
+  'legacy log migrates under the new name',
+  existsSync(join(dir, 'no-guess.log')) && readFileSync(join(dir, 'no-guess.log'), 'utf8').includes('"legacy"'),
+)
+check('legacy directory is left in place (archive)', existsSync(legacyDir))
+
+// Machines that already ran the 0.4.x migration have next/ask-first.log and no
+// live log; the fixup must adopt it once, without deleting the old file.
+rmSync(legacyDir, { recursive: true, force: true })
+writeFileSync(join(dir, 'ask-first.log'), '{"event":"stranded"}\n', 'utf8')
+rmSync(join(dir, 'no-guess.log'), { force: true })
+resetConfigCache()
+readConfig()
+check(
+  'stranded ask-first.log is adopted as no-guess.log',
+  existsSync(join(dir, 'no-guess.log')) && readFileSync(join(dir, 'no-guess.log'), 'utf8').includes('"stranded"'),
+)
+check('stranded archive file is kept', existsSync(join(dir, 'ask-first.log')))
 
 console.log('CONFIGTEST PASS=' + pass + ' FAIL=' + fail)
 if (fail > 0) process.exit(1)

@@ -124,14 +124,27 @@ function migrateLegacyData() {
   try {
     const next = dataDir()
     const legacy = join(dshHome(), 'ask-first')
-    if (existsSync(next) || !existsSync(legacy)) return
+    if (!existsSync(legacy) && !existsSync(next)) return
     mkdirSync(next, { recursive: true })
-    for (const name of readdirSync(legacy)) {
-      const from = join(legacy, name)
-      const to = join(next, name)
-      if (existsSync(to)) continue
-      if (statSync(from).isFile()) copyFileSync(from, to)
+    // Copy whatever is new from the pre-rename directory. The log was renamed
+    // in 0.4.0: copy it under the name the current code actually reads, or the
+    // history stays stranded under a name nobody opens.
+    if (existsSync(legacy)) {
+      for (const name of readdirSync(legacy)) {
+        const from = join(legacy, name)
+        if (!statSync(from).isFile()) continue
+        const target = name === 'ask-first.log' ? 'no-guess.log' : name
+        const to = join(next, target)
+        if (existsSync(to)) continue
+        copyFileSync(from, to)
+      }
     }
+    // Fixup for machines that already ran the 0.4.x migration: the old log was
+    // copied under its old name and the current code never sees it. Copy it
+    // once; the old file stays as an archive.
+    const stranded = join(next, 'ask-first.log')
+    const live = join(next, 'no-guess.log')
+    if (existsSync(stranded) && !existsSync(live)) copyFileSync(stranded, live)
   } catch {}
 }
 function configPath() {
