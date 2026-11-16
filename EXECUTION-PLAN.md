@@ -15,16 +15,18 @@
 | **P5** | 假设账本 | ⬜ 方向确认 | 最后做；turn-stopping 检测「假设：」行 + append-only JSONL | 需实测 stop 时刻消息可见性 |
 | **P6** | 生态与退场 | ⬜ 长期 | 严格度分档、信号包、dsh-go 原生界面、回流官方 preset | 依赖 P1–P5 |
 
-## 二、0.4.6（马上发，补丁级）
+## 二、0.4.6 / 0.4.7（已发布）
 
 | # | 任务 | 内容 | 验收 | 状态 |
 |---|---|---|---|---|
-| 1 | 日志迁移修复 | 迁移时 `ask-first.log` 复制为 `no-guess.log`（幂等 fixup，已迁移机器也补一次），旧文件保留 archive | 升级后 `/log` 与分析工具能看到历史日志 | ⬜ |
-| 2 | 版本号与 CHANGELOG | `package.json` → 0.4.6；CHANGELOG Unreleased 转 0.4.6 | 两处一致 | ⬜ |
-| 3 | 全测 | 6 组测试全绿 | smoke/edge/attack/config/replay/analyze-log 全 exit 0 | ✅ 已跑（56/20/15/29/25%/21） |
-| 4 | 发版 | 提交 + npm publish + GitHub release | registry latest=0.4.6，ta 能升级收基线 | ⬜ |
+| 1 | 日志迁移修复 | 迁移时 `ask-first.log` 复制为 `no-guess.log`（幂等 fixup，已迁移机器也补一次），旧文件保留 archive | 升级后 `/log` 与分析工具能看到历史日志 | ✅ |
+| 2 | 版本号与 CHANGELOG | `package.json` → 0.4.6 / 0.4.7；CHANGELOG 对应段落 | 两处一致 | ✅ |
+| 3 | 全测 | 6 组测试全绿 | smoke/edge/attack/config/replay/analyze-log 全 exit 0 | ✅ 56/20/15/33/25%/21 |
+| 4 | 发版 | 提交 + npm publish + GitHub release | registry latest=0.4.7，ta 能升级收基线 | ✅ |
 
-已含在 0.4.6 里的内容（已提交 `c638801`）：日志契约扩展（signal/family/turn/latencyMs）、`tools/analyze-log.mjs` 分析工具。
+- **0.4.6**：日志契约扩展（signal/family/turn/latencyMs）、`tools/analyze-log.mjs`、历史日志接管修复、`files` 包含 `tools/`
+- **0.4.7**：热路径修复——迁移检查移到配置缓存未命中之后，守卫路径不再每工具调用做 legacy 扫描
+- 验证：0.4.6 与 0.4.7 均从 registry 干净安装并跑通分析工具；GitHub release v0.4.6 / v0.4.7 已建；远端 main 与本地一致
 
 ## 三、P1 v0 落码任务（0.4.6 之后）
 
@@ -89,7 +91,7 @@
 
 ## 八、已知事实
 
-- 当前版本 0.4.5（npm latest）；工作区 HEAD `3efa23a`，日志契约在 `c638801`
-- 测试 56（smoke）+ 21（analyze-log）+ 29（config）+ 20（edge）+ 15（attack），replay 25%
-- 历史日志迁移问题：0.4.5 迁移按原文件名复制，`ask-first.log` 未被新代码接管 → 0.4.6 修
+- 当前版本 0.4.7（npm latest）；工作区 HEAD `8d90ec7`
+- 测试 56（smoke）+ 21（analyze-log）+ 33（config）+ 20（edge）+ 15（attack），replay 25%
+- 历史日志迁移问题：0.4.6 已修复（含已迁移机器的幂等 fixup，旧文件保留 archive）
 - 本机与 ta 那台注册表不同：本机有 `list_sessions`/`claim_status`/`job_*`/`remote_*`/`video_*`，无 `mcp__phone__*`/`terminal_*`/`team_task_*`/`adb` → 表必须 dump 生成
