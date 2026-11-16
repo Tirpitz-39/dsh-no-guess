@@ -1,0 +1,65 @@
+{
+  "exportedAt": "2026-11-17T05:55:00+08:00",
+  "source": "cordis_inspect_query host/Event on DSH 0.2.2-rc.1 (running host)",
+  "note": "Contract snapshot for test/dsh-contract.mjs. Refresh by querying the Event provider (listEvents) for each event below and updating signatures/types. If this file drifts from the plugin's assumptions, the contract test fails on purpose.",
+  "events": {
+    "tools/pre-execute": {
+      "mode": "waterfall",
+      "signature": "'tools/pre-execute'(this: Scoped<ToolsService>, exec: ToolExecution, next: () => Promise<PreToolDecision>): Promise<PreToolDecision>",
+      "parameters": ["exec"],
+      "decisionType": "PreToolDecision"
+    },
+    "tools/post-execute": {
+      "mode": "waterfall",
+      "signature": "'tools/post-execute'(this: Scoped<ToolsService>, exec: ToolExecution, result: Readonly<ToolExecutionResult>, next: () => Promise<PostToolDecision>): Promise<PostToolDecision>",
+      "parameters": ["exec", "result"]
+    },
+    "tools/execute": {
+      "mode": "waterfall",
+      "signature": "'tools/execute'(this: Scoped<ToolsService>, exec: ToolDispatchExecution, next: () => Promise<ToolExecutionResult>): Promise<ToolExecutionResult>"
+    },
+    "tools/result": {
+      "mode": "emit",
+      "signature": "'tools/result'(this: Scoped<ToolsService>, exec: Readonly<ToolExecution>, result: Readonly<ToolExecutionResult>): undefined"
+    },
+    "agent/pre-step": {
+      "mode": "waterfall",
+      "signature": "'agent/pre-step'(this: Scoped<Agent>, payload: { agent: Agent; messages: UserMessage[]; turn: number; step: number; signal: AbortSignal; modelSelection: Readonly<ModelSelection> }, next: () => Promise<PreStepDecision>): Promise<PreStepDecision>",
+      "payloadFields": ["agent", "messages", "turn", "step", "signal", "modelSelection"],
+      "decisionType": "PreStepDecision"
+    },
+    "agent/created": {
+      "mode": "serial",
+      "signature": "'agent/created'(this: Scoped<Agent>, payload: { agent: Agent; source: SessionStartSource; signal?: AbortSignal }): undefined | Promise<undefined>",
+      "payloadFields": ["agent", "source", "signal"]
+    },
+    "agent/disposed": {
+      "mode": "emit",
+      "signature": "'agent/disposed'(this: Scoped<Agent>, payload: { agent: Agent }): void",
+      "payloadFields": ["agent"]
+    },
+    "agent/turn-stopping": {
+      "mode": "serial",
+      "signature": "'agent/turn-stopping'(this: Scoped<Agent>, payload: { agent: Agent; turn: number; signal: AbortSignal }): Promise<void> | void",
+      "payloadFields": ["agent", "turn", "signal"]
+    },
+    "session/event": {
+      "mode": "emit",
+      "signature": "'session/event'(this: Scoped<Session>, session: Session, event: SessionEvent): void"
+    }
+  },
+  "types": {
+    "PreToolDecision": "export type PreToolDecision = {\n    kind: 'allow';\n} | {\n    kind: 'deny';\n    reason: string;\n    info?: ToolErrorInfo;\n} | {\n    kind: 'cancel';\n} | {\n    kind: 'ask';\n    reason?: string;\n    displayReason?: {\n        readonly en: string;\n        readonly [locale: string]: string;\n    };\n};",
+    "PreStepDecision": "export type PreStepDecision = {\n    kind: 'reject';\n} | {\n    kind: 'enter';\n    messages: UserMessage[];\n    startsRequestSeries?: true;\n};",
+    "ToolExecutionInput": "export interface ToolExecutionInput {\n    readonly callId: ToolCallId;\n    readonly rootCallId?: ToolCallId;\n    readonly name: string;\n    readonly schema?: ToolSchema;\n    readonly arguments: unknown;\n    readonly agent?: Agent;\n    readonly toolSet?: ResolvedToolSet;\n    readonly parent?: ToolExecutionToken;\n    readonly signal: AbortSignal;\n}",
+    "ToolExecution": "export interface ToolExecution extends ToolExecutionInput {\n    readonly rootCallId: ToolCallId;\n    readonly token: ToolExecutionToken;\n}",
+    "ToolRunContext": "export interface ToolRunContext extends ToolExecution {\n    deferContext(context: UserMessage): void;\n    concludeTurn(): void;\n}",
+    "UserMessage": "export interface UserMessage extends MessageBase {\n    readonly role: 'user';\n}",
+    "Agent": "export interface Agent {\n    readonly id: SessionId;\n}",
+    "ToolCallKind": "export type ToolCallKind = 'read' | 'edit' | 'delete' | 'move' | 'search' | 'execute' | 'fetch' | 'other';",
+    "PreToolDecisionKinds": ["allow", "deny", "cancel", "ask"],
+    "PreStepDecisionKinds": ["reject", "enter"],
+    "ToolDefinition": "export interface ToolDefinition extends ToolSchema {\n    readonly output: ToolOutputDefinition;\n    execute(args: unknown, exec: ToolRunContext): Promise<unknown>;\n    ...\n}",
+    "ToolSchema": "export interface ToolSchema {\n    deferLoading?: true;\n    name: string;\n    description: string;\n    parameters: Record<string, unknown>;\n}"
+  }
+}
