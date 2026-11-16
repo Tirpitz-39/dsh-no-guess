@@ -4,7 +4,8 @@
 
 - **宿主契约测试**（P0/M1）：`test/dsh-contract.mjs` + `fixtures/host-contract.json`，把插件依赖的 DSH 事件（`tools/pre-execute` / `agent/pre-step` / `agent/created` / `agent/disposed` / `tools/result`）与决策类型固化成快照。宿主改名或改 payload 形状时测试直接红，而不是插件静默失效
 - **启动自检**（P0/M1）：启动时检查 `tools` 服务与三个 hook 是否被接受、`webServer` 注入结果；首次 `pre-step` / `pre-execute` 校验 payload 形状；reasoning 记 present/empty/absent 三态，连续 10 轮不可见记 `degraded`。`GET /state` 返回 `selfCheck` 字段，日志记 `degraded` 事件
-- 测试：contract 28（新增）、self-check 13（新增）
+- **生命周期修复**（P0/M3）：agent 重建时释放上一实例的 hook disposer 与 root-context effect，不再每次重建累积一个死 effect；`states` 加 500 条上限（LRU 淘汰）；`agent/disposed` 时删除状态条目；`selfCheck.hooks.attached` 暴露当前挂载数
+- 测试：contract 28（新增）、self-check 19（新增）
 
 ## 0.4.7
 

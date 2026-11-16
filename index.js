@@ -567,9 +567,25 @@ export function isHumanSession(session) {
 
 // ------------------------------------------------------------------ state
 
+const MAX_STATE_ENTRIES = 500
+
 function getState(states, sid) {
   let st = states.get(sid)
   if (!st) {
+    // A long-lived host must not grow this map forever: evict the least
+    // recently seen session when the cap is reached.
+    if (states.size >= MAX_STATE_ENTRIES) {
+      let oldestKey = ''
+      let oldestAt = Infinity
+      for (const [key, value] of states) {
+        const at = value && typeof value.lastSeenAt === 'number' ? value.lastSeenAt : 0
+        if (at < oldestAt) {
+          oldestAt = at
+          oldestKey = key
+        }
+      }
+      if (oldestKey) states.delete(oldestKey)
+    }
     st = {
       armed: false,
       // Which gate armed the turn: 'thinking' | 'rule' | 'model'. Logged as
@@ -581,10 +597,12 @@ function getState(states, sid) {
       lastText: '',
       lastTurn: 0,
       lastUserAt: 0,
+      lastSeenAt: Date.now(),
       timer: null,
     }
     states.set(sid, st)
   }
+  st.lastSeenAt = Date.now()
   return st
 }
 
@@ -822,6 +840,10 @@ function handleRoute(ctx, states, req, res) {
 export function apply(ctx) {
   const states = new Map()
   const agents = new Map()
+  // Per-session hook disposers. The host re-creates agents on resume/session
+  // switch; the previous instance's hooks and its root-context effect must be
+  // released or every rebuild leaves one dead effect behind.
+  const agentHooks = new Map()
 
   const logger = (level, message) => {
     try {
@@ -852,9 +874,27 @@ export function apply(ctx) {
       // its agent.ctx. Attach the new instance and start from clean state, or
       // the gate silently stops firing after the first rebuild.
       if (agents.has(sid)) {
+        // Release the previous instance's hooks before attaching the new one:
+        // the old agent.ctx died with it, and leaving its disposers behind
+        // accumulates one dead effect per rebuild on the plugin root context.
+        const prev = agentHooks.get(sid)
+        if (prev) {
+          try {
+            prev.dispose && prev.dispose()
+          } catch {}
+          try {
+            prev.disposeResult && prev.disposeResult()
+          } catch {}
+          try {
+            prev.disposeEffect && prev.disposeEffect()
+          } catch {}
+          agentHooks.delete(sid)
+          selfCheck.hooks.attached = agentHooks.size
+        }
         const st = getState(states, sid)
         st.lastText = ''
         st.armed = false
+        st.armedSignal = ''
         st.askedThisTurn = false
         st.blocksThisTurn = 0
         st.blockedAt = 0
@@ -884,7 +924,7 @@ export function apply(ctx) {
           logLine('answered', { sid, turn: st.lastTurn, latencyMs })
         } catch {}
       })
-      ctx.effect(() => () => {
+      const disposeEffect = ctx.effect(() => () => {
         try {
           dispose && dispose()
         } catch {}
@@ -894,7 +934,14 @@ export function apply(ctx) {
         if (agents.get(sid) === agent) agents.delete(sid)
         const st = states.get(sid)
         if (st) clearTimer(st)
+        const current = agentHooks.get(sid)
+        if (current && current.disposeEffect === disposeEffect) {
+          agentHooks.delete(sid)
+          selfCheck.hooks.attached = agentHooks.size
+        }
       }, 'dsh-no-guess: pre-step ' + sid)
+      agentHooks.set(sid, { dispose, disposeResult, disposeEffect })
+      selfCheck.hooks.attached = agentHooks.size
     } catch (error) {
       logger('warn', 'attach failed: ' + (error instanceof Error ? error.message : String(error)))
     }
@@ -1113,6 +1160,20 @@ export function apply(ctx) {
         const sid = dead && dead.session ? String(dead.session.id) : ''
         if (!sid) return
         if (agents.get(sid) === dead) agents.delete(sid)
+        const prev = agentHooks.get(sid)
+        if (prev) {
+          try {
+            prev.dispose && prev.dispose()
+          } catch {}
+          try {
+            prev.disposeResult && prev.disposeResult()
+          } catch {}
+          try {
+            prev.disposeEffect && prev.disposeEffect()
+          } catch {}
+          agentHooks.delete(sid)
+          selfCheck.hooks.attached = agentHooks.size
+        }
         const st = states.get(sid)
         if (st) {
           clearTimer(st)
@@ -1123,6 +1184,7 @@ export function apply(ctx) {
           st.blocksThisTurn = 0
           st.blockedAt = 0
         }
+        states.delete(sid)
       } catch {}
     })
     selfCheck.hooks.agentDisposed = typeof off === 'function' ? 'registered' : 'no-disposer'

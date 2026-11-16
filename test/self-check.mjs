@@ -139,5 +139,21 @@ const next = async () => ({ kind: 'enter', messages: [] })
   )
 }
 
+// ---------------- rebuild does not accumulate hooks ----------------
+{
+  const ctx = makeCtx({ tools: {} })
+  apply(ctx)
+  for (let i = 0; i < 5; i += 1) {
+    const agent = makeAgent('s-rebuild')
+    ctx.handlers.agentCreated[0]({ agent })
+    const attached = selfCheckState().hooks.attached
+    check('rebuild ' + i + ': attached hook count stays 1', attached === 1, attached)
+  }
+  const last = makeAgent('s-rebuild')
+  ctx.handlers.agentCreated[0]({ agent: last })
+  ctx.handlers.agentDisposed[0]({ agent: last })
+  check('disposed: attached hook count is 0', selfCheckState().hooks.attached === 0, selfCheckState().hooks.attached)
+}
+
 console.log('SELFCHECKTEST PASS=' + pass + ' FAIL=' + fail)
 if (fail > 0) process.exit(1)
