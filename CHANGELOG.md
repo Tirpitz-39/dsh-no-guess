@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **宿主契约测试**（P0/M1）：`test/dsh-contract.mjs` + `fixtures/host-contract.json`，把插件依赖的 DSH 事件（`tools/pre-execute` / `agent/pre-step` / `agent/created` / `agent/disposed` / `tools/result`）与决策类型固化成快照。宿主改名或改 payload 形状时测试直接红，而不是插件静默失效
+- **启动自检**（P0/M1）：启动时检查 `tools` 服务与三个 hook 是否被接受、`webServer` 注入结果；首次 `pre-step` / `pre-execute` 校验 payload 形状；reasoning 记 present/empty/absent 三态，连续 10 轮不可见记 `degraded`。`GET /state` 返回 `selfCheck` 字段，日志记 `degraded` 事件
+- 测试：contract 28（新增）、self-check 13（新增）
+
 ## 0.4.7
 
 - **热路径修复**：数据迁移检查（`migrateLegacyData`）原本在 `readConfig` 的缓存命中之前执行，每个工具调用都会多做几次 `existsSync`/`readdir`。现在只在配置缓存未命中时跑，1 秒内最多一次

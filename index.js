@@ -316,6 +316,74 @@ function maybeText(cfg, text, limit = 120) {
   return cfg && cfg.logUserText === true ? String(text ?? '').slice(0, limit) : undefined
 }
 
+// ------------------------------------------------------------------ self-check
+
+// A silent guard is worse than a broken one. Fail-open keeps the host alive, but
+// a gate that never fires — because a hook was not accepted, a service is
+// missing, or the host changed its payload shape — must be visible. Startup and
+// first-use checks accumulate here; /state exposes the result and the log gets a
+// single `degraded` line per reason.
+const selfCheck = {
+  startedAt: new Date().toISOString(),
+  reasons: [],
+  hooks: {},
+  toolsService: null,
+  webServer: null,
+  firstPreStep: null,
+  firstGuard: null,
+  reasoning: { present: 0, empty: 0, absent: 0, absentStreak: 0 },
+}
+
+function degrade(reason, detail) {
+  if (selfCheck.reasons.some((item) => item.reason === reason)) return
+  selfCheck.reasons.push({ reason, detail: detail === undefined ? null : detail, at: new Date().toISOString() })
+  logLine('degraded', { reason, detail: detail === undefined ? null : detail })
+}
+
+/** Snapshot of gate health, exposed through GET /state and used by tests. */
+export function selfCheckState() {
+  return {
+    startedAt: selfCheck.startedAt,
+    degraded: selfCheck.reasons.length > 0,
+    reasons: [...selfCheck.reasons],
+    hooks: { ...selfCheck.hooks },
+    toolsService: selfCheck.toolsService,
+    webServer: selfCheck.webServer,
+    firstPreStep: selfCheck.firstPreStep,
+    firstGuard: selfCheck.firstGuard,
+    reasoning: { ...selfCheck.reasoning },
+  }
+}
+
+/**
+ * Three-state reasoning visibility for one turn:
+ *   present — at least one non-empty reasoning block in this turn
+ *   empty   — assistant messages exist for the turn but carry no reasoning
+ *   absent  — no assistant messages for the turn at all (provider may not emit reasoning)
+ * `absent`/`empty` for many consecutive turns is the "thinking gate is blind"
+ * signal.
+ */
+export function reasoningStatus(session, turn) {
+  try {
+    const snap = session && Array.isArray(session.eventsSnapshot) ? session.eventsSnapshot : []
+    let sawAssistant = false
+    for (let i = snap.length - 1; i >= 0; i -= 1) {
+      const ev = snap[i]
+      if (!ev) continue
+      if (ev.type === 'user/message') break
+      if (ev.type !== 'assistant/message') continue
+      const evTurn = ev.data && typeof ev.data.turn === 'number' ? ev.data.turn : undefined
+      if (typeof turn === 'number' && evTurn !== undefined && evTurn !== turn) continue
+      sawAssistant = true
+      const blocks = ev.data && ev.data.message && Array.isArray(ev.data.message.content) ? ev.data.message.content : []
+      if (blocks.some((b) => b && b.type === 'reasoning' && typeof b.text === 'string' && b.text.trim())) return 'present'
+    }
+    return sawAssistant ? 'empty' : 'absent'
+  } catch {
+    return 'absent'
+  }
+}
+
 // ------------------------------------------------------------------ rules
 
 export function isAck(text) {
@@ -687,6 +755,7 @@ function handleRoute(ctx, states, req, res) {
         effectiveEnabled: override && typeof override.enabled === 'boolean' ? override.enabled : cfg.enabled,
         armed: st ? st.armed === true : false,
         blockedAt: st ? st.blockedAt || 0 : 0,
+        selfCheck: selfCheckState(),
       })
     }
     if (req.method === 'GET' && path === '/config') {
@@ -761,6 +830,16 @@ export function apply(ctx) {
     } catch {}
   }
 
+  // Startup self-check: the gate needs the tools service and its three event
+  // hooks. A missing service or a rejected hook would leave the plugin loaded
+  // but silent; record it instead of swallowing.
+  try {
+    selfCheck.toolsService = Boolean(ctx.get && ctx.get('tools'))
+    if (!selfCheck.toolsService) degrade('tools-service-missing')
+  } catch (error) {
+    degrade('tools-service-lookup-failed', error instanceof Error ? error.message : String(error))
+  }
+
   // Per-agent pre-step: remember the latest user message.
   const attachAgent = (agent) => {
     try {
@@ -823,6 +902,18 @@ export function apply(ctx) {
 
   const handlePreStep = async (sid, agent, payload) => {
     const p = payload || {}
+    // First-use shape check: if the host changes the pre-step payload, the
+    // plugin would otherwise arm nothing and look healthy. Record it once.
+    if (selfCheck.firstPreStep === null) {
+      const ok = Array.isArray(p.messages) && typeof p.step === 'number' && typeof p.turn === 'number'
+      selfCheck.firstPreStep = ok ? 'ok' : 'shape-mismatch'
+      if (!ok) {
+        degrade(
+          'pre-step-payload-shape',
+          JSON.stringify({ messages: Array.isArray(p.messages), step: typeof p.step, turn: typeof p.turn }),
+        )
+      }
+    }
     if (p.step !== 1) return
     const text = extractUserText(p.messages)
     if (!text) {
@@ -876,6 +967,17 @@ export function apply(ctx) {
   // Global guard: block the first tool call while the request is still vague.
   const guard = async (exec, next) => {
     try {
+      // First-use shape check: name/agent are what the guard reads.
+      if (selfCheck.firstGuard === null) {
+        const ok = Boolean(exec) && typeof exec.name === 'string' && Boolean(exec.agent)
+        selfCheck.firstGuard = ok ? 'ok' : 'shape-mismatch'
+        if (!ok) {
+          degrade(
+            'guard-exec-shape',
+            JSON.stringify({ name: typeof (exec && exec.name), agent: Boolean(exec && exec.agent) }),
+          )
+        }
+      }
       const session = exec && exec.agent ? exec.agent.session : null
       if (!session) return next()
       if (!isHumanSession(session)) return next()
@@ -922,6 +1024,19 @@ export function apply(ctx) {
       const selfDiscuss = SELF_DISCUSS_RE.test(st.lastText)
       if (!st.armed && !selfDiscuss && cfg.thinkingGate !== false && st.blocksThisTurn === 0 && st.lastText) {
         const guess = extractGuessText(session, st.lastTurn)
+        // Track whether reasoning is visible at all. The thinking gate is the
+        // primary trigger, so a provider that never emits reasoning leaves the
+        // gate blind — degrade loudly instead of failing silently.
+        const reasoningState = reasoningStatus(session, st.lastTurn)
+        selfCheck.reasoning[reasoningState] += 1
+        if (reasoningState === 'present') {
+          selfCheck.reasoning.absentStreak = 0
+        } else {
+          selfCheck.reasoning.absentStreak += 1
+          if (selfCheck.reasoning.absentStreak === 10) {
+            degrade('reasoning-not-visible', '10 consecutive turns without visible reasoning')
+          }
+        }
         // Strips whitespace before matching so a newline cannot split the
         // phrase (adversarial check A5); matchGuessFamily returns the family
         // id so the log can attribute the block.
@@ -965,6 +1080,8 @@ export function apply(ctx) {
 
   ctx.effect(() => {
     const offGuard = ctx.on('tools/pre-execute', guard)
+    selfCheck.hooks.preExecute = typeof offGuard === 'function' ? 'registered' : 'no-disposer'
+    if (typeof offGuard !== 'function') degrade('pre-execute-hook-not-registered')
     return () => {
       try {
         offGuard && offGuard()
@@ -978,6 +1095,8 @@ export function apply(ctx) {
         attachAgent((payload && payload.agent) || payload)
       } catch {}
     })
+    selfCheck.hooks.agentCreated = typeof off === 'function' ? 'registered' : 'no-disposer'
+    if (typeof off !== 'function') degrade('agent-created-hook-not-registered')
     return () => {
       try {
         off && off()
@@ -999,12 +1118,15 @@ export function apply(ctx) {
           clearTimer(st)
           st.lastText = ''
           st.armed = false
+          st.armedSignal = ''
           st.askedThisTurn = false
           st.blocksThisTurn = 0
           st.blockedAt = 0
         }
       } catch {}
     })
+    selfCheck.hooks.agentDisposed = typeof off === 'function' ? 'registered' : 'no-disposer'
+    if (typeof off !== 'function') degrade('agent-disposed-hook-not-registered')
     return () => {
       try {
         off && off()
@@ -1015,21 +1137,32 @@ export function apply(ctx) {
   try {
     ctx.inject(['webServer'], (child) => {
       try {
+        selfCheck.webServer = 'injected'
         child.effect(() => {
           const off = child.webServer.register({
             kind: 'prefix',
             path: ROUTE_PREFIX,
             handler: (req, res) => handleRoute(ctx, states, req, res),
           })
+          if (typeof off !== 'function') degrade('web-route-not-registered')
           return () => {
             try {
               off && off()
             } catch {}
           }
         }, 'dsh-no-guess: http route')
-      } catch {}
+      } catch (error) {
+        degrade('web-route-registration-failed', error instanceof Error ? error.message : String(error))
+      }
     })
-  } catch {}
+    // The inject callback never fires when the service is absent; say so.
+    const pendingTimer = setTimeout(() => {
+      if (selfCheck.webServer === null) degrade('web-server-injection-pending', 'webServer service not injected after 5s')
+    }, 5_000)
+    if (pendingTimer && typeof pendingTimer.unref === 'function') pendingTimer.unref()
+  } catch (error) {
+    degrade('web-server-injection-failed', error instanceof Error ? error.message : String(error))
+  }
 
   logger('info', 'loaded v' + VERSION)
 }
