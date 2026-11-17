@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.1
 
 - **P1 按可逆性分级放行**（`readPolicy: "tiered"` 默认开启）：武装状态下只读工具（read / glob / grep / web_search / session_search / session_* / list_sessions / cordis_inspect_* 等）照常放行——它们正是消解歧义的手段；write（edit/write/remember/create_goal）与 execute（pwsh/selftest/subagent/workflow/job_kill）与 external（send_message/send_to_session/schedule_*/plugin_manager/remote_*）仍拦；表外工具 fail-closed 拦下，日志记 `tier: "unknown"` 而不是冒充 execute
 - **tierOverrides**：全局 `{ 工具名: tier }` 覆盖表——多动作工具（`plugin_manager` 的 list、`clipboard` 的读）在名字级分级下会误拦，用它自救；非法 tier 值自动丢弃
