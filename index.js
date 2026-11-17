@@ -586,7 +586,12 @@ export const GUESS_RE = new RegExp(
 // the reasoning there self-triggers. Scoped to the user's message — the
 // reasoning is model output and must not be able to name the plugin to talk
 // its way out.
-const SELF_DISCUSS_RE = /(dsh-no-guess|ask-first|不猜插件|不猜这个插件|插件本身)/i
+//
+// Narrowed after the P1 attack drill: a bare plugin name is NOT enough. A real
+// task about the plugin ("change dsh-no-guess timeout") must not be exempted,
+// otherwise naming the plugin becomes a free pass around the gate. The name
+// must be followed by 插件 / 这个插件 / 的插件 to count as self-discussion.
+const SELF_DISCUSS_RE = /(?:dsh-no-guess|ask-first)\s*(?:这个|的)?\s*插件|不猜插件|不猜这个插件|插件本身/i
 
 /**
  * Reasoning text of THIS turn only. The snapshot keeps earlier turns too; a

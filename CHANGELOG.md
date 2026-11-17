@@ -7,7 +7,8 @@
 - **read-pass 反事实事件**：武装时 read 被放行记 `read-pass`（tool/tier/signal/turn/policy），`block-ask` / `block-stop` 记 `tier` 与 `policy` 字段——切到 tiered 后能算出「旧策略会拦多少只读操作」
 - **切换开关**：`readPolicy: "legacy"` 一把回到 0.5.0 行为；`GET /state` 的 config 里可见
 - 启动自检：注册表探测，表外工具写一次 `unknown-tool` degraded
-- 测试：tiers 30（新增）；smoke 57（subagent 改为 execute 档：武装时拦，未武装放行）
+- **攻击演练 + 修复**（P1）：新增 `test/attack-p1.mjs`（20 样本，覆盖近义词绕过、自讨论豁免滥用、read 档副作用、未知工具、伪造机器轮次/reasoning、超长思考、maxBlocks 突破、伪造日志）。演练暴露并修复「自讨论豁免滥用」：裸插件名不再豁免，要求「插件名 + 插件/这个插件」结构，否则「帮我改 dsh-no-guess 配置」这类正常任务会被豁免放行。已知局限如实记录：近义词绕过（隐含意图/推测/估计）与混合消息豁免，留 P3
+- 测试：tiers 30（新增）；smoke 57（subagent 改为 execute 档：武装时拦，未武装放行）；attack-p1 20（新增）
 
 ## 0.5.0
 

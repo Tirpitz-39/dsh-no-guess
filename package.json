@@ -42,14 +42,15 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "test": "node test/dsh-contract.mjs && node test/self-check.mjs && node test/tiers.mjs && node test/smoke.mjs && node test/edge-cases.mjs && node test/attack.mjs && node test/config.mjs && node test/replay.mjs && node test/analyze-log.mjs",
+    "test": "node test/dsh-contract.mjs && node test/self-check.mjs && node test/tiers.mjs && node test/attack-p1.mjs && node test/smoke.mjs && node test/edge-cases.mjs && node test/attack.mjs && node test/config.mjs && node test/replay.mjs && node test/analyze-log.mjs",
     "test:contract": "node test/dsh-contract.mjs",
     "test:self": "node test/self-check.mjs",
     "test:tiers": "node test/tiers.mjs",
+    "test:attack-p1": "node test/attack-p1.mjs",
     "test:smoke": "node test/smoke.mjs",
     "test:edge": "node test/edge-cases.mjs",
     "test:attack": "node test/attack.mjs",
-    "prepublishOnly": "node test/dsh-contract.mjs && node test/self-check.mjs && node test/tiers.mjs && node test/smoke.mjs && node test/edge-cases.mjs && node test/attack.mjs && node test/config.mjs && node test/analyze-log.mjs"
+    "prepublishOnly": "node test/dsh-contract.mjs && node test/self-check.mjs && node test/tiers.mjs && node test/attack-p1.mjs && node test/smoke.mjs && node test/edge-cases.mjs && node test/attack.mjs && node test/config.mjs && node test/analyze-log.mjs"
   },
   "repository": {
     "type": "git",
