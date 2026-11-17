@@ -61,9 +61,10 @@ function clampNumber(value, spec) {
   return Math.min(spec.max, Math.max(spec.min, rounded))
 }
 
-// Tools that never count as "动手": asking is the whole point, todo bookkeeping
-// does not change the world, and the claim_* / wrapup_check family must always
-// go through.
+// Legacy allow-list: the pre-P1 (0.5.0) unconditional-pass set, used only when
+// readPolicy is "legacy". Under tiered policy the "allow" tier decides instead,
+// and subagent / subagent_fork / workflow moved to execute — delegating work is
+// still acting, and the parent session can ask the user instead.
 const ALWAYS_ALLOW = new Set([
   'ask_user_question',
   'todo_write',
