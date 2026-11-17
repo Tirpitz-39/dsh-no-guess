@@ -52,6 +52,29 @@
 | `maxBlocksPerTurn` | `2` | 每轮最多拦几次，1–10 |
 | `vagueMaxLength` | `40` | 多短算「说不清」，10–200 |
 | `logUserText` | `false` | 日志是否记录用户消息与思考片段；默认只记 sid / turn / 工具名 |
+| `readPolicy` | `"tiered"` | 分级策略：`tiered` 按可逆性放行只读工具；`legacy` 回到 0.5.0 的「非白名单全拦」 |
+| `tierOverrides` | `{}` | 全局工具→tier 覆盖表，如 `{ "plugin_manager": "read" }`；非法值丢弃 |
+
+## 按可逆性分级放行（P1，默认开启）
+
+武装状态下不是所有工具都拦——只拦不可逆动作。默认 `readPolicy: "tiered"`：
+
+| 等级 | 工具（示例） | 武装时 |
+|---|---|---|
+| **read** | `read` / `glob` / `grep` / `read_image` / `web_search` / `web_fetch` / `session_search` / `session_trace` / `list_sessions` / `cordis_inspect_*` | **放行** |
+| **write** | `edit` / `write` / `remember` / `create_goal` / `update_goal` | 拦 |
+| **execute** | `pwsh` / `selftest` / `subagent` / `subagent_fork` / `workflow` / `job_kill` | 拦 |
+| **external** | `send_message` / `send_to_session` / `schedule_create` / `schedule_edit` / `plugin_manager` / `remote_*` | 拦 |
+| **allow** | `ask_user_question` / `todo_write` / `wrapup_check` / `claim_*` / `present` | 放行 |
+| **unknown** | 表外工具（新插件、MCP 工具） | 拦，日志记 `tier: "unknown"` |
+
+三条设计原则：
+
+- **只读放行是有意的**：读文件、查会话、开摄像头看屏幕，正是消解歧义的手段。拦它们等于逼模型猜。
+- **fail 语义分两种**：守卫崩溃 / 异常 → **fail-open**（不弄坏宿主）；判定不确定（表外工具）→ **fail-closed**（不赌）。两句分开成立。
+- **读类证据留痕**：武装时 read 被放行会记 `read-pass`（tool/tier/signal/turn/policy），切到 tiered 后能用 `tools/analyze-log.mjs` 算出「旧策略会拦多少只读操作」。
+
+**已知误拦**（多动作工具，名字级分级分不出动作）：`plugin_manager` 的 list、`claim_check` 的 `persist:false`、`clipboard` 的读——用 `tierOverrides` 自救，或 `readPolicy: "legacy"` 一键回退。
 
 ## 超时
 

@@ -39,6 +39,12 @@ const DEFAULTS = {
   // Privacy: the log is on disk and may be shipped with a bug report. User
   // text and reasoning snippets are opt-in, not opt-out.
   logUserText: false,
+  // P1: 'tiered' lets read-only tools through while armed; 'legacy' restores
+  // the pre-P1 behaviour (only ALWAYS_ALLOW passes).
+  readPolicy: 'tiered',
+  // Global tool -> tier overrides, for tools this table does not know or got
+  // wrong on the user's machine.
+  tierOverrides: {},
 }
 
 /** Numeric config bounds; also used to sanitize hand-edited config files. */
@@ -70,6 +76,117 @@ const ALWAYS_ALLOW = new Set([
   'subagent_fork',
   'workflow',
 ])
+
+// P1 v0 tier table: name -> tier, static by design. No parameter inspection, no
+// command parsing, no runtime inference. Unknown tools fail closed: they are
+// treated as execute (blocked) and logged with tier "unknown" so table drift is
+// measurable. Read tools are the point of the change: while the user's request
+// is still vague, reading is how the ambiguity gets resolved without acting.
+//
+// Generated from the live host registry (72 tools via the Tool Inspect
+// provider) and reviewed by hand; refresh it when a new plugin adds tools.
+const TOOL_TIERS = {
+  // read — resolves ambiguity, cannot change the world
+  read: 'read',
+  read_image: 'read',
+  glob: 'read',
+  grep: 'read',
+  list_sessions: 'read',
+  list_agents: 'read',
+  list_subagent_models: 'read',
+  session_search: 'read',
+  session_trace: 'read',
+  session_event_search: 'read',
+  session_event_read: 'read',
+  session_event_trace: 'read',
+  web_search: 'read',
+  web_fetch: 'read',
+  skill: 'read',
+  xingxi: 'read',
+  xingxi_read: 'read',
+  video_help: 'read',
+  video_probe: 'read',
+  video_locate: 'read',
+  video_storyboard: 'read',
+  video_zoom: 'read',
+  video_subtitles: 'read',
+  video_storyboard_settings: 'read',
+  schedule_list: 'read',
+  schedule_view: 'read',
+  working_directory: 'read',
+  load_workspace_dependencies: 'read',
+  get_goal: 'read',
+  job_list: 'read',
+  job_output: 'read',
+  cordis_inspect_list: 'read',
+  cordis_inspect_query: 'read',
+  remote_list_hosts: 'read',
+  remote_list_workspaces: 'read',
+  remote_list_sessions: 'read',
+  remote_read_session: 'read',
+  remote_get_operation: 'read',
+  remote_wait_sessions: 'read',
+
+  // write — accumulates or changes state, but stays local and often undoable
+  edit: 'write',
+  write: 'write',
+  remember: 'write',
+  create_goal: 'write',
+  update_goal: 'write',
+  create_worktree: 'write',
+
+  // execute — runs code, spawns work, or kills something
+  pwsh: 'execute',
+  selftest: 'execute',
+  subagent: 'execute',
+  subagent_fork: 'execute',
+  workflow: 'execute',
+  job_kill: 'execute',
+  interrupt_agent: 'execute',
+
+  // external — leaves this session or machine; nobody local can undo it
+  send_message: 'external',
+  send_to_session: 'external',
+  schedule_create: 'external',
+  schedule_edit: 'external',
+  plugin_manager: 'external',
+  plugin_market: 'external',
+  remote_create_session: 'external',
+  remote_send_message: 'external',
+  remote_interrupt_session: 'external',
+  remote_upload_file: 'external',
+  remote_download_file: 'external',
+
+  // allow — never counted as "acting"
+  ask_user_question: 'allow',
+  todo_write: 'allow',
+  wrapup_check: 'allow',
+  claim_plan: 'allow',
+  claim_verify: 'allow',
+  claim_status: 'allow',
+  claim_report: 'allow',
+  present: 'allow',
+  exit_plan_mode: 'allow',
+}
+
+const TIER_VALUES = new Set(['read', 'write', 'execute', 'external', 'allow'])
+
+/** Static tier table, exported for tests and docs. */
+export { TOOL_TIERS }
+
+/**
+ * Effective tier for one tool. Precedence: user override > static table >
+ * unknown. Unknown is not execute yet — the caller applies fail-closed
+ * behaviour and logs the literal "unknown" so drift is countable.
+ */
+export function resolveTier(tool, cfg) {
+  const overrides = cfg && cfg.tierOverrides && typeof cfg.tierOverrides === 'object' ? cfg.tierOverrides : null
+  if (overrides && Object.prototype.hasOwnProperty.call(overrides, tool)) {
+    const value = overrides[tool]
+    if (TIER_VALUES.has(value)) return value
+  }
+  return Object.prototype.hasOwnProperty.call(TOOL_TIERS, tool) ? TOOL_TIERS[tool] : 'unknown'
+}
 
 // Short receipts that answer a previous question ("继续" / "1" / "好").
 const ACK_RE =
@@ -198,6 +315,14 @@ export function readConfig() {
   if (typeof src.ruleGate === 'boolean') cfg.ruleGate = src.ruleGate
   if (typeof src.modelGate === 'boolean') cfg.modelGate = src.modelGate
   if (typeof src.logUserText === 'boolean') cfg.logUserText = src.logUserText
+  if (src.readPolicy === 'tiered' || src.readPolicy === 'legacy') cfg.readPolicy = src.readPolicy
+  if (src.tierOverrides && typeof src.tierOverrides === 'object' && !Array.isArray(src.tierOverrides)) {
+    const clean = {}
+    for (const [tool, tier] of Object.entries(src.tierOverrides)) {
+      if (typeof tool === 'string' && tool && TIER_VALUES.has(tier)) clean[tool] = tier
+    }
+    cfg.tierOverrides = clean
+  }
   for (const key of Object.keys(LIMITS)) {
     if (src[key] !== undefined) cfg[key] = clampNumber(src[key], LIMITS[key])
   }
@@ -233,6 +358,14 @@ export function writeConfig(patch) {
     if (typeof patch.ruleGate === 'boolean') next.ruleGate = patch.ruleGate
     if (typeof patch.modelGate === 'boolean') next.modelGate = patch.modelGate
     if (typeof patch.logUserText === 'boolean') next.logUserText = patch.logUserText
+    if (patch.readPolicy === 'tiered' || patch.readPolicy === 'legacy') next.readPolicy = patch.readPolicy
+    if (patch.tierOverrides && typeof patch.tierOverrides === 'object' && !Array.isArray(patch.tierOverrides)) {
+      const clean = {}
+      for (const [tool, tier] of Object.entries(patch.tierOverrides)) {
+        if (typeof tool === 'string' && tool && TIER_VALUES.has(tier)) clean[tool] = tier
+      }
+      next.tierOverrides = clean
+    }
     for (const key of Object.keys(LIMITS)) {
       if (patch[key] !== undefined) next[key] = clampNumber(patch[key], LIMITS[key])
     }
@@ -328,6 +461,8 @@ const selfCheck = {
   reasons: [],
   hooks: {},
   toolsService: null,
+  toolsRegistry: null,
+  untieredTools: [],
   webServer: null,
   firstPreStep: null,
   firstGuard: null,
@@ -348,6 +483,8 @@ export function selfCheckState() {
     reasons: [...selfCheck.reasons],
     hooks: { ...selfCheck.hooks },
     toolsService: selfCheck.toolsService,
+    toolsRegistry: selfCheck.toolsRegistry,
+    untieredTools: [...selfCheck.untieredTools],
     webServer: selfCheck.webServer,
     firstPreStep: selfCheck.firstPreStep,
     firstGuard: selfCheck.firstGuard,
@@ -868,6 +1005,25 @@ export function apply(ctx) {
     degrade('tools-service-lookup-failed', error instanceof Error ? error.message : String(error))
   }
 
+  // P1: compare the live tool registry with the static tier table once. Tools
+  // outside the table fail closed at call time; surfacing them here is what
+  // keeps the table from drifting silently (dsh-go / MCP tools vary by host).
+  try {
+    const toolsService = ctx.get && ctx.get('tools')
+    if (toolsService && typeof toolsService.schemas === 'function') {
+      const names = toolsService
+        .schemas()
+        .map((schema) => (schema && schema.name) || '')
+        .filter((name) => typeof name === 'string' && name)
+      selfCheck.toolsRegistry = names.length
+      const untiered = names.filter((name) => !Object.prototype.hasOwnProperty.call(TOOL_TIERS, name))
+      selfCheck.untieredTools = untiered
+      if (untiered.length > 0) degrade('unknown-tool', JSON.stringify(untiered.slice(0, 20)))
+    }
+  } catch (error) {
+    degrade('tool-registry-probe-failed', error instanceof Error ? error.message : String(error))
+  }
+
   // Per-agent pre-step: remember the latest user message.
   const attachAgent = (agent) => {
     try {
@@ -1060,7 +1216,12 @@ export function apply(ctx) {
         logLine('asked', { sid, turn: st.lastTurn, latencyMs })
         return next()
       }
-      if (ALWAYS_ALLOW.has(tool)) return next()
+      // P1: read-only tools are how ambiguity gets resolved. In tiered policy
+      // they pass even while armed; legacy keeps the old allow-list behaviour.
+      const policy = cfg.readPolicy === 'legacy' ? 'legacy' : 'tiered'
+      const tier = policy === 'legacy' ? 'legacy' : resolveTier(tool, cfg)
+      const isAllow = policy === 'legacy' ? ALWAYS_ALLOW.has(tool) : tier === 'allow'
+      if (isAllow) return next()
       // Rule fallback (opt-in): the user message itself looks underspecified.
       if (!st.armed && cfg.ruleGate === true && st.lastText) {
         if (looksVague(st.lastText, cfg.vagueMaxLength)) {
@@ -1102,6 +1263,22 @@ export function apply(ctx) {
       }
       if (!st.armed) return next()
 
+      // Armed: a read-only call still passes under tiered policy — reading is
+      // how the model should resolve the ambiguity. The log records the
+      // counterfactual so "how many reads did the old policy block" is
+      // measurable after the switch.
+      if (tier === 'read') {
+        logLine('read-pass', {
+          sid,
+          tool,
+          tier: 'read',
+          signal: st.armedSignal || 'unknown',
+          turn: st.lastTurn,
+          policy,
+        })
+        return next()
+      }
+
       // Timeout grace: the user is not coming back; let it through.
       if (st.blockedAt && Date.now() - st.blockedAt > Math.max(1, cfg.timeoutMinutes) * 60_000) {
         st.armed = false
@@ -1113,7 +1290,7 @@ export function apply(ctx) {
         if (st.blocksThisTurn >= cfg.maxBlocksPerTurn) return next()
         st.blocksThisTurn += 1
         st.blockedAt = Date.now()
-        logLine('block-stop', { sid, tool, turn: st.lastTurn })
+        logLine('block-stop', { sid, tool, tier, turn: st.lastTurn, policy })
         return { kind: 'deny', reason: STOP_TEXT }
       }
 
@@ -1121,7 +1298,15 @@ export function apply(ctx) {
       st.blocksThisTurn += 1
       st.blockedAt = Date.now()
       armTimeout(exec.agent, sid, st, cfg)
-      logLine('block-ask', { sid, tool, signal: st.armedSignal || 'unknown', turn: st.lastTurn, text: maybeText(cfg, st.lastText) })
+      logLine('block-ask', {
+        sid,
+        tool,
+        tier,
+        signal: st.armedSignal || 'unknown',
+        turn: st.lastTurn,
+        policy,
+        text: maybeText(cfg, st.lastText),
+      })
       return {
         kind: 'deny',
         reason: ASK_TEXT + '\n\n你用户刚才那句：' + st.lastText.slice(0, 160),

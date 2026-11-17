@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **P1 按可逆性分级放行**（`readPolicy: "tiered"` 默认开启）：武装状态下只读工具（read / glob / grep / web_search / session_search / session_* / list_sessions / cordis_inspect_* 等）照常放行——它们正是消解歧义的手段；write（edit/write/remember/create_goal）与 execute（pwsh/selftest/subagent/workflow/job_kill）与 external（send_message/send_to_session/schedule_*/plugin_manager/remote_*）仍拦；表外工具 fail-closed 拦下，日志记 `tier: "unknown"` 而不是冒充 execute
+- **tierOverrides**：全局 `{ 工具名: tier }` 覆盖表——多动作工具（`plugin_manager` 的 list、`clipboard` 的读）在名字级分级下会误拦，用它自救；非法 tier 值自动丢弃
+- **read-pass 反事实事件**：武装时 read 被放行记 `read-pass`（tool/tier/signal/turn/policy），`block-ask` / `block-stop` 记 `tier` 与 `policy` 字段——切到 tiered 后能算出「旧策略会拦多少只读操作」
+- **切换开关**：`readPolicy: "legacy"` 一把回到 0.5.0 行为；`GET /state` 的 config 里可见
+- 启动自检：注册表探测，表外工具写一次 `unknown-tool` degraded
+- 测试：tiers 30（新增）；smoke 57（subagent 改为 execute 档：武装时拦，未武装放行）
+
 ## 0.5.0
 
 P0 工程债收口：让「静默失效」变成可见状态。

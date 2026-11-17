@@ -162,10 +162,15 @@ await runPreStep(agent, '继续', 2)
 const afterAck = await runTool('pwsh', agent)
 check('ack receipt does not arm', afterAck && afterAck.kind === 'enter', JSON.stringify(afterAck))
 
-// subagent dispatch itself is never blocked
+// subagent dispatch is execute-tier since P1: while armed it is blocked (the
+// parent session can ask the user instead of delegating), while not armed it
+// passes normally.
 await runPreStep(agent, '那个怎么样', 6)
 const subagentCall = await runTool('subagent', agent)
-check('subagent tool always passes', subagentCall && subagentCall.kind === 'enter', JSON.stringify(subagentCall))
+check('subagent is execute-tier: blocked while armed', subagentCall && subagentCall.kind === 'deny', JSON.stringify(subagentCall))
+await runPreStep(agent, '帮我改一下 config.json', 7)
+const subagentIdle = await runTool('subagent', agent)
+check('subagent passes when not armed', subagentIdle && subagentIdle.kind === 'enter', JSON.stringify(subagentIdle))
 
 // ask-phrase ("干什么用的") must arm even with an action-looking char
 await runPreStep(agent, '这个配置文件是干什么用的', 3)
