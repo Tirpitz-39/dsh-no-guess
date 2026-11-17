@@ -78,6 +78,11 @@ export function analyzeEvents(records) {
   let timeoutRelease = 0
   let firstAt = ''
   let lastAt = ''
+  // P1: read tools pass while armed. The counterfactual is what makes "how
+  // many reads did the legacy policy block" measurable.
+  const readPass = { total: 0, byTool: {}, bySignal: {} }
+  const blockTiers = {}
+  const blockPolicies = {}
 
   const touchSession = (sid) => {
     if (!sid) return null
@@ -109,9 +114,21 @@ export function analyzeEvents(records) {
       signals[signal] = (signals[signal] || 0) + 1
       continue
     }
+    if (event === 'read-pass') {
+      readPass.total += 1
+      const passTool = typeof record.tool === 'string' ? record.tool : 'unknown'
+      readPass.byTool[passTool] = (readPass.byTool[passTool] || 0) + 1
+      const passSignal = typeof record.signal === 'string' ? record.signal : 'unknown'
+      readPass.bySignal[passSignal] = (readPass.bySignal[passSignal] || 0) + 1
+      continue
+    }
     if (event === 'block-ask') {
       blockAsk += 1
       if (session) session.blocks += 1
+      const tier = typeof record.tier === 'string' ? record.tier : 'unknown'
+      blockTiers[tier] = (blockTiers[tier] || 0) + 1
+      const policy = typeof record.policy === 'string' ? record.policy : 'unknown'
+      blockPolicies[policy] = (blockPolicies[policy] || 0) + 1
     } else if (event === 'block-stop') {
       blockStop += 1
       if (session) session.blocks += 1
@@ -159,6 +176,9 @@ export function analyzeEvents(records) {
     timeoutRelease,
     timeoutRate: blocked ? timeout / blocked : 0,
     quickAnswers: quick,
+    readPass,
+    blockTiers,
+    blockPolicies,
     sessions: [...bySession.values()].sort((a, b) => b.armed + b.blocks - (a.armed + a.blocks)),
     firstAt,
     lastAt,
@@ -190,6 +210,16 @@ export function formatSummary(summary, file) {
   lines.push('armed     ' + summary.armed + '   (' + signalParts + ')')
   lines.push('families  ' + (familyParts || '-'))
   lines.push('blocked   ' + summary.blocked + '   (block-ask ' + summary.blockAsk + ' / block-stop ' + summary.blockStop + ')')
+  const tierParts = Object.entries(summary.blockTiers || {})
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, count]) => name + ' ' + count)
+    .join(', ')
+  if (summary.blockTiers && Object.keys(summary.blockTiers).length) lines.push('by tier   ' + tierParts)
+  const passParts = Object.entries((summary.readPass && summary.readPass.byTool) || {})
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, count]) => name + ' ' + count)
+    .join(', ')
+  lines.push('read-pass ' + ((summary.readPass && summary.readPass.total) || 0) + '   (by tool: ' + (passParts || '-') + ')')
   const answerRateText =
     summary.answerRate === null ? 'n/a (no turn-linked answers in this log)' : pct(summary.answerRate)
   lines.push(
